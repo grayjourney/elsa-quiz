@@ -1,0 +1,631 @@
+{
+  "info": {
+    "name": "Real-Time Vocabulary Quiz API",
+    "_postman_id": "e1f2a3b4-c5d6-47e8-9a0b-1c2d3e4f5a6b",
+    "description": "Contract-first API collection for the Real-Time Vocabulary Quiz server.\n\nEvery request maps to a testable scenario in `docs/02-test-cases.md`. The HTTP control/query surface makes all request/response cases assertable in Postman; the real-time push channel is documented in the **Realtime (WebSocket)** folder.\n\n## Auth\nUsers are pre-authenticated (mocked, per the challenge). Identity is supplied as `user_id` (WebSocket query param) or the `X-User-ID` header (HTTP). There is no token to send. Collection auth = No Auth.\n\n## Variables\n- `baseUrl` (default `http://localhost:8080`)\n- `wsUrl` (default `ws://localhost:8080`)\n- `quizId`, `userId`, `otherUserId` — auto-populated by the Create/Join requests' test scripts.\n\n## Error body shape\n```json\n{ \"code\": \"duplicate_answer\", \"message\": \"Answer already submitted for this question\" }\n```\n\n## Note\nThe HTTP/WebSocket layer is the next implementation increment; this collection is the contract it will satisfy (the domain/store/service core that backs it is already implemented and tested).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": { "type": "noauth" },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "wsUrl", "value": "ws://localhost:8080" },
+    { "key": "quizId", "value": "" },
+    { "key": "userId", "value": "alice" },
+    { "key": "otherUserId", "value": "bob" }
+  ],
+  "item": [
+    {
+      "name": "Health & Observability",
+      "item": [
+        {
+          "name": "Health check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('reports status', () => pm.expect(pm.response.json()).to.have.property('status'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/health", "host": ["{{baseUrl}}"], "path": ["api", "health"] },
+            "description": "Liveness + active-session count.\n\nCovers test case: *Quiz Session Management → Background: the quiz server is running*."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/health", "host": ["{{baseUrl}}"], "path": ["api", "health"] } },
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"status\": \"ok\",\n  \"activeSessions\": 0,\n  \"uptimeSeconds\": 1234\n}"
+            }
+          ]
+        },
+        {
+          "name": "Prometheus metrics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/metrics", "host": ["{{baseUrl}}"], "path": ["metrics"] },
+            "description": "Prometheus exposition format. Covers NFR-5.3 (metrics)."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/metrics", "host": ["{{baseUrl}}"], "path": ["metrics"] } },
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "text/plain; version=0.0.4" }],
+              "_postman_previewlanguage": "text",
+              "body": "# HELP quiz_active_sessions Number of active quiz sessions\n# TYPE quiz_active_sessions gauge\nquiz_active_sessions 1\n# HELP quiz_connected_users Connected users\n# TYPE quiz_connected_users gauge\nquiz_connected_users 5\n# HELP quiz_message_latency_ms Score-update broadcast latency\n# TYPE quiz_message_latency_ms histogram\nquiz_message_latency_ms_bucket{le=\"500\"} 4200"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Session Management",
+      "item": [
+        {
+          "name": "Create session (manual policy)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.test('returns a quiz ID', () => pm.expect(b.quizId).to.be.a('string').and.not.empty);",
+                  "pm.test('status is waiting', () => pm.expect(b.status).to.eql('waiting'));",
+                  "pm.collectionVariables.set('quizId', b.quizId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/sessions", "host": ["{{baseUrl}}"], "path": ["api", "sessions"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"endPolicy\": \"manual\",\n  \"timeLimitSeconds\": 0,\n  \"questions\": [\n    {\n      \"id\": \"Q1\",\n      \"text\": \"What is the past tense of 'go'?\",\n      \"options\": [\"goed\", \"went\", \"gone\", \"going\"],\n      \"correctAnswer\": \"went\",\n      \"order\": 1\n    },\n    {\n      \"id\": \"Q2\",\n      \"text\": \"What is the plural of 'mouse'?\",\n      \"options\": [\"mouses\", \"mice\", \"mouse\", \"meese\"],\n      \"correctAnswer\": \"mice\",\n      \"order\": 2\n    }\n  ]\n}"
+            },
+            "description": "Covers: *Session Lifecycle → Creating a session with the manual end policy* and *Quiz Session Management → Creating a new quiz session*.\n\nThe `quizId` returned is saved to a collection variable and reused by later requests."
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "originalRequest": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": { "raw": "{{baseUrl}}/api/sessions", "host": ["{{baseUrl}}"], "path": ["api", "sessions"] }, "body": { "mode": "raw", "raw": "{ \"endPolicy\": \"manual\", \"questions\": [] }" } },
+              "status": "Created",
+              "code": 201,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"quizId\": \"QUIZ-7KQH4ZB2N9XA\",\n  \"status\": \"waiting\",\n  \"endPolicy\": \"manual\",\n  \"timeLimitSeconds\": 0,\n  \"questionCount\": 2\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create session (timed policy, 30s)",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('201 Created', () => pm.response.to.have.status(201));", "const b = pm.response.json();", "pm.test('endPolicy timed', () => pm.expect(b.endPolicy).to.eql('timed'));", "pm.test('30s limit', () => pm.expect(b.timeLimitSeconds).to.eql(30));" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/sessions", "host": ["{{baseUrl}}"], "path": ["api", "sessions"] },
+            "body": { "mode": "raw", "raw": "{\n  \"endPolicy\": \"timed\",\n  \"timeLimitSeconds\": 30,\n  \"questions\": [\n    {\n      \"id\": \"Q1\",\n      \"text\": \"What is the past tense of 'go'?\",\n      \"options\": [\"goed\", \"went\", \"gone\", \"going\"],\n      \"correctAnswer\": \"went\",\n      \"order\": 1\n    }\n  ]\n}" },
+            "description": "Covers: *Session Lifecycle → Creating a session with the timed end policy*."
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/api/sessions", "host": ["{{baseUrl}}"], "path": ["api", "sessions"] } },
+              "status": "Created",
+              "code": 201,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"quizId\": \"QUIZ-3MN8WQ5RT2YC\",\n  \"status\": \"waiting\",\n  \"endPolicy\": \"timed\",\n  \"timeLimitSeconds\": 30,\n  \"questionCount\": 1\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create session (timed, 0s) → 400 invalid_time_limit",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('400 Bad Request', () => pm.response.to.have.status(400));", "pm.test('code invalid_time_limit', () => pm.expect(pm.response.json().code).to.eql('invalid_time_limit'));" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/sessions", "host": ["{{baseUrl}}"], "path": ["api", "sessions"] },
+            "body": { "mode": "raw", "raw": "{\n  \"endPolicy\": \"timed\",\n  \"timeLimitSeconds\": 0,\n  \"questions\": [\n    { \"id\": \"Q1\", \"text\": \"x\", \"options\": [\"a\", \"b\"], \"correctAnswer\": \"a\", \"order\": 1 }\n  ]\n}" },
+            "description": "Covers: *Session Lifecycle → Rejecting a timed session with a non-positive time limit*."
+          },
+          "response": [
+            {
+              "name": "400 Bad Request",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/api/sessions", "host": ["{{baseUrl}}"], "path": ["api", "sessions"] } },
+              "status": "Bad Request",
+              "code": 400,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"code\": \"invalid_time_limit\",\n  \"message\": \"Time limit must be greater than zero\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get session",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}"] },
+            "description": "Read current session state (status, participant count, current question)."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}"] } },
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"quizId\": \"QUIZ-7KQH4ZB2N9XA\",\n  \"status\": \"active\",\n  \"endPolicy\": \"manual\",\n  \"participantCount\": 3,\n  \"currentQuestion\": { \"id\": \"Q1\", \"order\": 1 }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get session (unknown) → 404 session_not_found",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('404 Not Found', () => pm.response.to.have.status(404));", "pm.test('code session_not_found', () => pm.expect(pm.response.json().code).to.eql('session_not_found'));" ] } } ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/sessions/QUIZ-999", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "QUIZ-999"] },
+            "description": "Covers: *Quiz Session Management → Joining a non-existent quiz session* (lookup half)."
+          },
+          "response": [
+            {
+              "name": "404 Not Found",
+              "originalRequest": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/sessions/QUIZ-999", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "QUIZ-999"] } },
+              "status": "Not Found",
+              "code": 404,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"code\": \"session_not_found\",\n  \"message\": \"Quiz session not found\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Participation - Join",
+      "item": [
+        {
+          "name": "Join session (Alice)",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('201 Created', () => pm.response.to.have.status(201));", "const b = pm.response.json();", "pm.test('initial score 0', () => pm.expect(b.score).to.eql(0));", "pm.collectionVariables.set('userId', b.userId);" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/participants", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "participants"] },
+            "body": { "mode": "raw", "raw": "{\n  \"userId\": \"alice\",\n  \"displayName\": \"Alice\"\n}" },
+            "description": "Covers: *Quiz Session Management → Joining a quiz session with a valid ID*. Initial score is 0.\n\n(Real-time clients join by opening the WebSocket; this HTTP form makes the case assertable.)"
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/participants", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "participants"] } },
+              "status": "Created",
+              "code": 201,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"userId\": \"alice\",\n  \"displayName\": \"Alice\",\n  \"score\": 0,\n  \"participantCount\": 1\n}"
+            }
+          ]
+        },
+        {
+          "name": "Join session (Bob)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('201 Created', () => pm.response.to.have.status(201));", "pm.collectionVariables.set('otherUserId', pm.response.json().userId);" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/participants", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "participants"] },
+            "body": { "mode": "raw", "raw": "{\n  \"userId\": \"bob\",\n  \"displayName\": \"Bob\"\n}" },
+            "description": "Second participant. Covers: *Notifying existing participants when a new user joins* (server pushes `user_joined` over WS to Alice)."
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/participants", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "participants"] } },
+              "status": "Created",
+              "code": 201,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"userId\": \"bob\",\n  \"displayName\": \"Bob\",\n  \"score\": 0,\n  \"participantCount\": 2\n}"
+            }
+          ]
+        },
+        {
+          "name": "Join non-existent → 404 session_not_found",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('404 Not Found', () => pm.response.to.have.status(404));", "pm.test('code session_not_found', () => pm.expect(pm.response.json().code).to.eql('session_not_found'));" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/sessions/QUIZ-999/participants", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "QUIZ-999", "participants"] },
+            "body": { "mode": "raw", "raw": "{ \"userId\": \"alice\", \"displayName\": \"Alice\" }" },
+            "description": "Covers: *Joining a non-existent quiz session* → \"Quiz session not found\"."
+          },
+          "response": [
+            {
+              "name": "404 Not Found",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/api/sessions/QUIZ-999/participants", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "QUIZ-999", "participants"] } },
+              "status": "Not Found",
+              "code": 404,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"code\": \"session_not_found\",\n  \"message\": \"Quiz session not found\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Join completed → 409 session_ended",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('409 Conflict', () => pm.response.to.have.status(409));", "pm.test('code session_ended', () => pm.expect(pm.response.json().code).to.eql('session_ended'));" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/sessions/QUIZ-OLD/participants", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "QUIZ-OLD", "participants"] },
+            "body": { "mode": "raw", "raw": "{ \"userId\": \"alice\", \"displayName\": \"Alice\" }" },
+            "description": "Covers: *Joining an already completed quiz session* → \"Quiz session has already ended\". (Use a quizId whose session is completed.)"
+          },
+          "response": [
+            {
+              "name": "409 Conflict",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/api/sessions/QUIZ-OLD/participants", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "QUIZ-OLD", "participants"] } },
+              "status": "Conflict",
+              "code": 409,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"code\": \"session_ended\",\n  \"message\": \"Quiz session has already ended\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Session Lifecycle",
+      "item": [
+        {
+          "name": "Start quiz (host)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', () => pm.response.to.have.status(200));", "pm.test('status active', () => pm.expect(pm.response.json().status).to.eql('active'));" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-User-ID", "value": "host", "description": "Mocked host identity" }],
+            "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/start", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "start"] },
+            "description": "Covers: *Session Lifecycle → Starting a quiz session*. Broadcasts the first `question` to all participants over WS."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/start", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "start"] } },
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"status\": \"active\",\n  \"currentQuestion\": {\n    \"id\": \"Q1\",\n    \"text\": \"What is the past tense of 'go'?\",\n    \"options\": [\"goed\", \"went\", \"gone\", \"going\"],\n    \"order\": 1\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Advance question (host)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-User-ID", "value": "host" }],
+            "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/advance", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "advance"] },
+            "description": "Covers: *Manual Policy → Host advances to the next question* and *Quiz completes after advancing past the final question*. `ongoing=false` means the quiz auto-completed."
+          },
+          "response": [
+            {
+              "name": "200 OK (next question)",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/advance", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "advance"] } },
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"ongoing\": true,\n  \"status\": \"active\",\n  \"currentQuestion\": { \"id\": \"Q2\", \"order\": 2 }\n}"
+            },
+            {
+              "name": "200 OK (completed past last)",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/advance", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "advance"] } },
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"ongoing\": false,\n  \"status\": \"completed\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "End quiz (host)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', () => pm.response.to.have.status(200));", "pm.test('status completed', () => pm.expect(pm.response.json().status).to.eql('completed'));" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-User-ID", "value": "host" }],
+            "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/end", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "end"] },
+            "description": "Covers: *Manual Policy → Host ends the quiz while a participant is AFK*. AFK players are scored 0; final leaderboard is returned and broadcast."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/end", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "end"] } },
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"status\": \"completed\",\n  \"leaderboard\": [\n    { \"rank\": 1, \"userId\": \"alice\", \"displayName\": \"Alice\", \"score\": 20 },\n    { \"rank\": 2, \"userId\": \"bob\", \"displayName\": \"Bob\", \"score\": 10 },\n    { \"rank\": 3, \"userId\": \"charlie\", \"displayName\": \"Charlie\", \"score\": 0 }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "End already-completed → 409 quiz_ended",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('409 Conflict', () => pm.response.to.have.status(409));", "pm.test('code quiz_ended', () => pm.expect(pm.response.json().code).to.eql('quiz_ended'));" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-User-ID", "value": "host" }],
+            "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/end", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "end"] },
+            "description": "Covers: *Session Lifecycle → Ending an already-completed quiz is rejected*."
+          },
+          "response": [
+            {
+              "name": "409 Conflict",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/end", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "end"] } },
+              "status": "Conflict",
+              "code": 409,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"code\": \"quiz_ended\",\n  \"message\": \"Quiz has already ended\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Participation - Answers",
+      "item": [
+        {
+          "name": "Submit correct answer → score +10",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', () => pm.response.to.have.status(200));", "const b = pm.response.json();", "pm.test('marked correct', () => pm.expect(b.isCorrect).to.be.true);", "pm.test('awarded base points', () => pm.expect(b.awardedPoints).to.eql(10));", "pm.test('leaderboard included', () => pm.expect(b.leaderboard).to.be.an('array'));" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-ID", "value": "{{userId}}", "description": "Mocked participant identity" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/answers", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "answers"] },
+            "body": { "mode": "raw", "raw": "{\n  \"questionId\": \"Q1\",\n  \"answer\": \"went\"\n}" },
+            "description": "Covers: *Real-Time Quiz Participation → Submitting a correct answer* and *Real-Time Score Updates → Score is updated immediately*. Response carries the recomputed leaderboard (broadcast over WS as `score_update` + `leaderboard_update`)."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/answers", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "answers"] } },
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"isCorrect\": true,\n  \"awardedPoints\": 10,\n  \"newScore\": 10,\n  \"leaderboard\": [\n    { \"rank\": 1, \"userId\": \"alice\", \"displayName\": \"Alice\", \"score\": 10 },\n    { \"rank\": 2, \"userId\": \"bob\", \"displayName\": \"Bob\", \"score\": 0 }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Submit incorrect answer → no score change",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', () => pm.response.to.have.status(200));", "const b = pm.response.json();", "pm.test('marked incorrect', () => pm.expect(b.isCorrect).to.be.false);", "pm.test('no points', () => pm.expect(b.awardedPoints).to.eql(0));" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "X-User-ID", "value": "{{otherUserId}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/answers", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "answers"] },
+            "body": { "mode": "raw", "raw": "{\n  \"questionId\": \"Q1\",\n  \"answer\": \"goed\"\n}" },
+            "description": "Covers: *Submitting an incorrect answer* and *Score is not increased for incorrect answer*."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/answers", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "answers"] } },
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"isCorrect\": false,\n  \"awardedPoints\": 0,\n  \"newScore\": 0,\n  \"leaderboard\": [\n    { \"rank\": 1, \"userId\": \"alice\", \"displayName\": \"Alice\", \"score\": 10 },\n    { \"rank\": 2, \"userId\": \"bob\", \"displayName\": \"Bob\", \"score\": 0 }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Duplicate answer → 409 duplicate_answer",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('409 Conflict', () => pm.response.to.have.status(409));", "pm.test('code duplicate_answer', () => pm.expect(pm.response.json().code).to.eql('duplicate_answer'));" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "X-User-ID", "value": "{{userId}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/answers", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "answers"] },
+            "body": { "mode": "raw", "raw": "{\n  \"questionId\": \"Q1\",\n  \"answer\": \"gone\"\n}" },
+            "description": "Covers: *Preventing duplicate answer submissions* → \"Answer already submitted for this question\". Run after the correct-answer request for the same user/question."
+          },
+          "response": [
+            {
+              "name": "409 Conflict",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/answers", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "answers"] } },
+              "status": "Conflict",
+              "code": 409,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"code\": \"duplicate_answer\",\n  \"message\": \"Answer already submitted for this question\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Unknown question → 404 question_not_found",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('404 Not Found', () => pm.response.to.have.status(404));", "pm.test('code question_not_found', () => pm.expect(pm.response.json().code).to.eql('question_not_found'));" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "X-User-ID", "value": "{{userId}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/answers", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "answers"] },
+            "body": { "mode": "raw", "raw": "{\n  \"questionId\": \"Q-NONEXISTENT\",\n  \"answer\": \"went\"\n}" },
+            "description": "Covers: *Submitting an answer for a non-existent question* → \"Question not found\"."
+          },
+          "response": [
+            {
+              "name": "404 Not Found",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/answers", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "answers"] } },
+              "status": "Not Found",
+              "code": 404,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"code\": \"question_not_found\",\n  \"message\": \"Question not found\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Empty answer → 400 answer_empty",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('400 Bad Request', () => pm.response.to.have.status(400));", "pm.test('code answer_empty', () => pm.expect(pm.response.json().code).to.eql('answer_empty'));" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "X-User-ID", "value": "{{userId}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/answers", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "answers"] },
+            "body": { "mode": "raw", "raw": "{\n  \"questionId\": \"Q1\",\n  \"answer\": \"\"\n}" },
+            "description": "Covers: *Input Validation → Rejecting empty answer submission* → \"Answer cannot be empty\"."
+          },
+          "response": [
+            {
+              "name": "400 Bad Request",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/answers", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "answers"] } },
+              "status": "Bad Request",
+              "code": 400,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"code\": \"answer_empty\",\n  \"message\": \"Answer cannot be empty\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Invalid option → 400 invalid_option",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('400 Bad Request', () => pm.response.to.have.status(400));", "pm.test('code invalid_option', () => pm.expect(pm.response.json().code).to.eql('invalid_option'));" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "X-User-ID", "value": "{{userId}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/answers", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "answers"] },
+            "body": { "mode": "raw", "raw": "{\n  \"questionId\": \"Q1\",\n  \"answer\": \"walked\"\n}" },
+            "description": "Covers: *Input Validation → Rejecting answer with invalid format* → \"Invalid answer option\" (answer is not one of the question's options)."
+          },
+          "response": [
+            {
+              "name": "400 Bad Request",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/answers", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "answers"] } },
+              "status": "Bad Request",
+              "code": 400,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"code\": \"invalid_option\",\n  \"message\": \"Invalid answer option\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Answer after quiz ended → 409 quiz_ended",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('409 Conflict', () => pm.response.to.have.status(409));", "pm.test('code quiz_ended', () => pm.expect(pm.response.json().code).to.eql('quiz_ended'));" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "X-User-ID", "value": "{{userId}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/answers", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "answers"] },
+            "body": { "mode": "raw", "raw": "{\n  \"questionId\": \"Q1\",\n  \"answer\": \"went\"\n}" },
+            "description": "Covers: *Session Lifecycle → Rejecting answer submissions after the quiz ends* → \"Quiz has already ended\". Run after End quiz."
+          },
+          "response": [
+            {
+              "name": "409 Conflict",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/answers", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "answers"] } },
+              "status": "Conflict",
+              "code": 409,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"code\": \"quiz_ended\",\n  \"message\": \"Quiz has already ended\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Late answer in timed quiz → 409 time_up",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('409 Conflict', () => pm.response.to.have.status(409));", "pm.test('code time_up', () => pm.expect(pm.response.json().code).to.eql('time_up'));" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "X-User-ID", "value": "{{userId}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/answers", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "answers"] },
+            "body": { "mode": "raw", "raw": "{\n  \"questionId\": \"Q1\",\n  \"answer\": \"went\"\n}" },
+            "description": "Covers: *Timed Policy → Rejecting a late answer after a question's time limit expired* → \"Time is up for this question\". Requires a timed session whose current question's limit has elapsed."
+          },
+          "response": [
+            {
+              "name": "409 Conflict",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/answers", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "answers"] } },
+              "status": "Conflict",
+              "code": 409,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"code\": \"time_up\",\n  \"message\": \"Time is up for this question\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Leaderboard",
+      "item": [
+        {
+          "name": "Get leaderboard",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', () => pm.response.to.have.status(200));", "const b = pm.response.json();", "pm.test('ranked descending', () => {", "  const s = b.leaderboard.map(e => e.score);", "  pm.expect(s).to.eql([...s].sort((a,c)=>c-a));", "});" ] } } ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/leaderboard", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "leaderboard"] },
+            "description": "Covers: *Real-Time Leaderboard → Leaderboard displays correct rankings* and *Tie-breaking by earlier submission time*. Order = score DESC, then earliest `LastScoredAt`, then userId."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/leaderboard", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "leaderboard"] } },
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"leaderboard\": [\n    { \"rank\": 1, \"userId\": \"bob\", \"displayName\": \"Bob\", \"score\": 50 },\n    { \"rank\": 2, \"userId\": \"charlie\", \"displayName\": \"Charlie\", \"score\": 40 },\n    { \"rank\": 3, \"userId\": \"alice\", \"displayName\": \"Alice\", \"score\": 30 }\n  ]\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Realtime (WebSocket)",
+      "item": [
+        {
+          "name": "Connect & join (ws)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{wsUrl}}/ws?quiz_id={{quizId}}&user_id={{userId}}&name=Alice",
+              "host": ["{{wsUrl}}"],
+              "path": ["ws"],
+              "query": [
+                { "key": "quiz_id", "value": "{{quizId}}" },
+                { "key": "user_id", "value": "{{userId}}" },
+                { "key": "name", "value": "Alice" }
+              ]
+            },
+            "description": "Open this as a **WebSocket** request in Postman (New → WebSocket Request, or import recognizes the `ws://` URL).\n\nConnecting joins the session (the connection *is* the membership). Identity is the `user_id` query param (mocked auth).\n\n### Messages you SEND (client → server)\n```json\n{ \"type\": \"submit_answer\", \"payload\": { \"questionId\": \"Q1\", \"answer\": \"went\" } }\n```\nHost-only control messages (or use the REST lifecycle endpoints):\n```json\n{ \"type\": \"start\" }\n{ \"type\": \"advance\" }\n{ \"type\": \"end\" }\n```\n\n### Messages you RECEIVE (server → client)\n```json\n{ \"type\": \"join_confirmed\", \"payload\": { \"userId\": \"alice\", \"quizId\": \"QUIZ-...\", \"score\": 0 } }\n{ \"type\": \"user_joined\", \"payload\": { \"userId\": \"bob\", \"displayName\": \"Bob\", \"participantCount\": 2 } }\n{ \"type\": \"question\", \"payload\": { \"id\": \"Q1\", \"text\": \"...\", \"options\": [\"goed\",\"went\",\"gone\",\"going\"], \"order\": 1, \"timeLimitSeconds\": 30 } }\n{ \"type\": \"score_update\", \"payload\": { \"userId\": \"alice\", \"isCorrect\": true, \"awardedPoints\": 10, \"newScore\": 10 } }\n{ \"type\": \"leaderboard_update\", \"payload\": { \"entries\": [ { \"rank\": 1, \"userId\": \"alice\", \"displayName\": \"Alice\", \"score\": 10 } ] } }\n{ \"type\": \"error\", \"payload\": { \"code\": \"duplicate_answer\", \"message\": \"Answer already submitted for this question\" } }\n{ \"type\": \"quiz_ended\", \"payload\": { \"leaderboard\": [ { \"rank\": 1, \"userId\": \"alice\", \"score\": 10 } ] } }\n```\n\n### Covers (real-time scenarios)\n- Multiple users joining simultaneously; notifying existing participants\n- Question broadcast to all participants\n- Score update broadcast within 500ms\n- Leaderboard broadcast to all connected participants\n- Disconnect/reconnect (state preserved server-side)"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

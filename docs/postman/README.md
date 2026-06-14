@@ -34,6 +34,12 @@ Gherkin scenarios, with full headers, payloads, auth notes, sample responses, an
 | Leaderboard | ranking + tie-break |
 | Realtime (WebSocket) | join/connect, question/score/leaderboard broadcasts, errors |
 
+> **Timed sessions auto-advance.** For a `timed` session the server pushes the next
+> `question` (and finally `quiz_ended`) over WebSocket on its own — when the
+> per-question timer expires, or early once all connected players have answered. No
+> client/host action is needed between questions. The "Late answer in timed quiz →
+> 409 time_up" request still applies to a question whose window has closed.
+
 ## Running as a suite
 The HTTP requests chain via collection variables: **Create session** saves
 `quizId`; **Join** saves `userId`/`otherUserId`. A natural run order:

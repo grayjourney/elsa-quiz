@@ -21,12 +21,13 @@ type API struct {
 	conns       *ConnectionManager
 	upgrader    websocket.Upgrader
 	metrics     *metrics
+	sched       *scheduler
 	now         func() time.Time
 	startedAt   time.Time
 }
 
 func NewAPI(st store.Store, basePoints int) *API {
-	return &API{
+	a := &API{
 		store:       st,
 		sessions:    service.NewSessionService(st),
 		scoring:     service.NewScoringService(st, basePoints),
@@ -36,6 +37,59 @@ func NewAPI(st store.Store, basePoints int) *API {
 		metrics:     newMetrics(st.ActiveSessionCount),
 		now:         time.Now,
 		startedAt:   time.Now(),
+	}
+	a.sched = newScheduler(a.advanceTimed)
+	return a
+}
+
+// Shutdown stops any pending timed-quiz timers.
+func (a *API) Shutdown() { a.sched.cancelAll() }
+
+// afterAdvance broadcasts the result of an advance and manages the timed timer.
+func (a *API) afterAdvance(s *domain.QuizSession, q domain.Question, ongoing bool) {
+	if ongoing {
+		a.conns.Broadcast(s.ID, Message(MsgQuestion, a.questionPayload(s, q)))
+		if s.EndPolicy == domain.EndPolicyTimed {
+			a.sched.schedule(s.ID, s.TimeLimit)
+		}
+		return
+	}
+	board, _ := a.leaderboard.GetLeaderboard(s.ID)
+	a.conns.Broadcast(s.ID, Message(MsgQuizEnded, QuizEndedPayload{Leaderboard: leaderboardEntries(board)}))
+	a.sched.cancel(s.ID)
+}
+
+// advanceTimed is the timer callback: advance the current question if it is
+// still current (a host advance or early advance may have moved on first).
+func (a *API) advanceTimed(quizID string) {
+	a.tryAdvanceCurrent(quizID)
+}
+
+// maybeAdvanceEarly advances a timed question as soon as every connected
+// participant has answered it, without waiting for the timer.
+func (a *API) maybeAdvanceEarly(quizID string) {
+	s, err := a.store.GetSession(quizID)
+	if err != nil || s.EndPolicy != domain.EndPolicyTimed {
+		return
+	}
+	if !s.AllAnsweredCurrent(a.conns.UserIDs(quizID)) {
+		return
+	}
+	a.tryAdvanceCurrent(quizID)
+}
+
+func (a *API) tryAdvanceCurrent(quizID string) {
+	s, err := a.store.GetSession(quizID)
+	if err != nil || s.GetStatus() != domain.StatusActive || s.EndPolicy != domain.EndPolicyTimed {
+		return
+	}
+	cur, ok := s.CurrentQuestion()
+	if !ok {
+		return
+	}
+	next, ongoing, advanced := s.AdvanceIfCurrent(cur.ID, a.now())
+	if advanced {
+		a.afterAdvance(s, next, ongoing)
 	}
 }
 
@@ -157,6 +211,9 @@ func (a *API) handleStart(w http.ResponseWriter, r *http.Request) {
 	if q, ok := s.CurrentQuestion(); ok {
 		resp["currentQuestion"] = questionView(q)
 		a.conns.Broadcast(s.ID, Message(MsgQuestion, a.questionPayload(s, q)))
+		if s.EndPolicy == domain.EndPolicyTimed {
+			a.sched.schedule(s.ID, s.TimeLimit)
+		}
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -172,13 +229,10 @@ func (a *API) handleAdvance(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	a.afterAdvance(s, q, ongoing)
 	resp := map[string]any{"ongoing": ongoing, "status": s.GetStatus()}
 	if ongoing {
 		resp["currentQuestion"] = questionView(q)
-		a.conns.Broadcast(s.ID, Message(MsgQuestion, a.questionPayload(s, q)))
-	} else {
-		board, _ := a.leaderboard.GetLeaderboard(s.ID)
-		a.conns.Broadcast(s.ID, Message(MsgQuizEnded, QuizEndedPayload{Leaderboard: leaderboardEntries(board)}))
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -194,6 +248,7 @@ func (a *API) handleEnd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Complete()
+	a.sched.cancel(s.ID)
 	board, _ := a.leaderboard.GetLeaderboard(s.ID)
 	a.conns.Broadcast(s.ID, Message(MsgQuizEnded, QuizEndedPayload{Leaderboard: leaderboardEntries(board)}))
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -227,6 +282,7 @@ func (a *API) handleSubmitAnswer(w http.ResponseWriter, r *http.Request) {
 		"newScore":      res.NewScore,
 		"leaderboard":   leaderboardView(board),
 	})
+	a.maybeAdvanceEarly(r.PathValue("id"))
 }
 
 func (a *API) handleLeaderboard(w http.ResponseWriter, r *http.Request) {

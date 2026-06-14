@@ -24,7 +24,9 @@
 
 > Deviations from the original step text: ID generator uses stdlib `crypto/rand`
 > (not `google/uuid`); HTTP wiring lives in `cmd/server/main.go` (no separate
-> `internal/server` package); `manual`/`timed` end policies were added (FR-5).
+> `internal/server` package); `manual`/`timed` end policies were added (now **FR-5**
+> in the PRD), including a per-session timer (`internal/handler/scheduler.go`) for
+> `timed` auto-advance / advance-early / auto-complete.
 
 ---
 

@@ -175,6 +175,45 @@ func (s *QuizSession) Complete() {
 	s.Status = StatusCompleted
 }
 
+// AdvanceIfCurrent advances only if questionID is still the current question.
+// advanced=false means another trigger (timer, all-answered, or host) already
+// moved past it — making concurrent advance triggers safe. Advancing past the
+// final question completes the session (ongoing=false, advanced=true).
+func (s *QuizSession) AdvanceIfCurrent(questionID string, at time.Time) (next Question, ongoing, advanced bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cur, ok := s.currentQuestionLocked()
+	if !ok || cur.ID != questionID {
+		return Question{}, false, false
+	}
+	if s.currentIdx+1 >= len(s.Questions) {
+		s.Status = StatusCompleted
+		return Question{}, false, true
+	}
+	s.currentIdx++
+	s.openedAt = at
+	return s.Questions[s.currentIdx], true, true
+}
+
+// AllAnsweredCurrent reports whether every user in userIDs has answered the
+// current question. Used to advance a timed question early once all connected
+// participants have answered. An empty set is never "all answered".
+func (s *QuizSession) AllAnsweredCurrent(userIDs []string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cur, ok := s.currentQuestionLocked()
+	if !ok || len(userIDs) == 0 {
+		return false
+	}
+	for _, uid := range userIDs {
+		p, ok := s.participants[uid]
+		if !ok || !p.HasAnswered(cur.ID) {
+			return false
+		}
+	}
+	return true
+}
+
 func (s *QuizSession) SubmitAnswer(userID, questionID, answer string, basePoints int, at time.Time) (AnswerResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

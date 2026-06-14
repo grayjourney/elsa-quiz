@@ -144,6 +144,15 @@ Using the architecture skill's context discovery matrix:
 | **Components** | Structured logging (`slog`), Prometheus metrics, health check endpoint, pprof profiling |
 | **Key Metrics** | Active connections, messages/sec, score calculation latency, leaderboard calculation time, error rates |
 
+### 2.8 Quiz Scheduler (Timed Advancement)
+
+| Aspect | Detail |
+|--------|--------|
+| **Role** | Drive automatic question advancement for the `timed` end policy |
+| **Responsibilities** | Hold one per-session `time.AfterFunc` timer; on expiry advance the current question; advance early once all *connected* participants have answered; auto-complete after the last question; cancel timers on quiz end / shutdown |
+| **Design** | Lives in the handler layer (the domain aggregate stays pure). All three advance triggers (timer fire, all-answered, host action) funnel through the aggregate's guarded `AdvanceIfCurrent(questionID)`, which advances only if that question is still current — making concurrent triggers race-free (no double-advance) |
+| **Manual policy** | No timers; the host drives advancement |
+
 ---
 
 ## 3. Data Flow

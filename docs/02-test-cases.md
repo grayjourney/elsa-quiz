@@ -1,7 +1,7 @@
 # Test Cases — Real-Time Vocabulary Quiz
 
-**Version:** 1.2
-**Date:** 2026-06-13
+**Version:** 1.3
+**Date:** 2026-06-15
 **Derived From:** [Product Requirements Document](./01-product-requirements.md)
 **Testing Strategy:** BDD-style scenarios (Gherkin) covering all acceptance criteria
 
@@ -526,6 +526,32 @@ Feature: Input Validation
 
 ---
 
+## Feature: Operations & Observability
+
+```gherkin
+Feature: Operations and Observability
+  In order to run the service reliably in production
+  As the platform operator
+  I want health and metrics endpoints to monitor the server
+
+  Scenario: Health check reports liveness and active sessions
+    Given the quiz server is running
+    And   2 quiz sessions are active
+    When  a client requests "GET /api/health"
+    Then  the response status is 200
+    And   the body reports status "ok"
+    And   the body reports an active session count of 2
+
+  Scenario: Metrics endpoint exposes quiz metrics
+    Given the quiz server is running
+    When  a client requests "GET /metrics"
+    Then  the response status is 200
+    And   the body is in Prometheus exposition format
+    And   it includes "quiz_active_sessions", "quiz_connected_users", and "quiz_answers_total"
+```
+
+---
+
 ## Test Coverage Summary
 
 | Feature Area              | Scenarios | Priority |
@@ -538,7 +564,8 @@ Feature: Input Validation
 | Session Lifecycle         | 13        | P1       |
 | Performance Under Load    | 2         | P2       |
 | Input Validation          | 2         | P2       |
-| **Total**                 | **45**    |          |
+| Operations & Observability| 2         | P2       |
+| **Total**                 | **47**    |          |
 
 ### Requirements Traceability
 
@@ -556,15 +583,17 @@ Feature: Input Validation
 | FR-4.6 Tie-breaking (LastScoredAt)       | "Tie-breaking by earlier submission time"                 |
 | NFR-3.1 / NFR-3.2 Reliability            | "Preserving state…", "Reconnecting…"                      |
 | NFR-1.1 / NFR-2.1 Scale + latency        | All "Performance Under Load" scenarios                    |
-| **FR-5 End policy (manual/timed) — NEW** ⚠️ | All "Session Lifecycle" config/advancement/end scenarios |
-| **FR-5 AFK never blocks progress — NEW** ⚠️ | "Host ends… while AFK", "AFK participant never blocks…"   |
+| FR-5.1–5.7 End policy (manual/timed)    | All "Session Lifecycle" config/advancement/end scenarios  |
+| FR-5.3 Timed auto-advance on expiry      | "Question auto-advances when its time limit expires"      |
+| FR-5.4 Timed advance-early (all answered)| "Question advances early when all active participants…"   |
+| FR-5.5 AFK never blocks progress         | "Host ends… while AFK", "AFK participant never blocks…"   |
+| NFR-5.1 / NFR-5.3 Observability          | "Operations & Observability" scenarios                    |
 
-> ⚠️ **Proposed requirement — needs PRD/architecture sync.** The end-policy and
-> per-question-timer behavior (`manual` vs `timed`) is **new** and not yet in the PRD.
-> Before implementation, add: a functional requirement (suggested **FR-5: Quiz End Policy**),
-> `EndPolicy` + `TimeLimit` fields on `QuizSession`, and a "Quiz Timer / Advancement"
-> responsibility in the architecture (Session Lifecycle owner + per-question `time.AfterFunc`).
-> These scenarios are the source of truth for that work.
+> **FR-5 is now in the PRD and implemented.** The `manual`/`timed` end policies —
+> including the per-question **timer** (auto-advance on expiry, advance-early when
+> all connected participants answer, auto-complete after the last question) — are
+> live in the server (`internal/handler/scheduler.go` + the `timed`-policy
+> integration tests). The earlier "proposed requirement" caveat is resolved.
 
 > **AI Collaboration:** Scenarios generated with Claude (testing-qa + testing-patterns
 > skills), reviewed for behavior-focus (no implementation-detail assertions), reformatted

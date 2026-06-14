@@ -99,6 +99,16 @@ func (m *ConnectionManager) Count(quizID string) int {
 	return len(m.sessions[quizID])
 }
 
+func (m *ConnectionManager) UserIDs(quizID string) []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	ids := make([]string, 0, len(m.sessions[quizID]))
+	for uid := range m.sessions[quizID] {
+		ids = append(ids, uid)
+	}
+	return ids
+}
+
 // trySend never blocks: a client whose buffer is full is treated as too slow and
 // the message is dropped rather than stalling the broadcast to everyone else.
 func trySend(c *client, msg []byte) {

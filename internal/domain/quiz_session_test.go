@@ -207,6 +207,77 @@ func TestQuizSession_SubmitAnswer_Errors(t *testing.T) {
 	})
 }
 
+func TestQuizSession_AdvanceIfCurrent(t *testing.T) {
+	t.Run("advances when the question is still current", func(t *testing.T) {
+		s := twoQuestionSession(t, EndPolicyManual, 0)
+		_ = s.Start(time.Now())
+		next, ongoing, advanced := s.AdvanceIfCurrent("Q1", time.Now())
+		if !advanced || !ongoing || next.ID != "Q2" {
+			t.Fatalf("AdvanceIfCurrent(Q1) = (%v, ongoing %v, advanced %v), want (Q2, true, true)", next.ID, ongoing, advanced)
+		}
+	})
+
+	t.Run("no-op when the question is no longer current (stale trigger)", func(t *testing.T) {
+		s := twoQuestionSession(t, EndPolicyManual, 0)
+		_ = s.Start(time.Now())
+		_, _, _ = s.AdvanceIfCurrent("Q1", time.Now()) // now on Q2
+		_, _, advanced := s.AdvanceIfCurrent("Q1", time.Now())
+		if advanced {
+			t.Errorf("stale AdvanceIfCurrent(Q1) advanced=true, want false (no double-advance)")
+		}
+		if q, _ := s.CurrentQuestion(); q.ID != "Q2" {
+			t.Errorf("current = %q, want Q2 (unchanged by stale trigger)", q.ID)
+		}
+	})
+
+	t.Run("advancing past the last question completes the session", func(t *testing.T) {
+		s := twoQuestionSession(t, EndPolicyManual, 0)
+		_ = s.Start(time.Now())
+		_, _, _ = s.AdvanceIfCurrent("Q1", time.Now()) // -> Q2
+		_, ongoing, advanced := s.AdvanceIfCurrent("Q2", time.Now())
+		if !advanced || ongoing {
+			t.Fatalf("advance past last = (ongoing %v, advanced %v), want (false, true)", ongoing, advanced)
+		}
+		if s.Status != StatusCompleted {
+			t.Errorf("status = %q, want completed", s.Status)
+		}
+	})
+}
+
+func TestQuizSession_AllAnsweredCurrent(t *testing.T) {
+	setup := func(t *testing.T) *QuizSession {
+		s := twoQuestionSession(t, EndPolicyManual, 0)
+		_, _ = s.AddParticipant(NewParticipant("alice", s.ID, "Alice"))
+		_, _ = s.AddParticipant(NewParticipant("bob", s.ID, "Bob"))
+		_ = s.Start(time.Now())
+		return s
+	}
+
+	t.Run("true when all listed users answered the current question", func(t *testing.T) {
+		s := setup(t)
+		_, _ = s.SubmitAnswer("alice", "Q1", "went", testBasePoints, time.Now())
+		_, _ = s.SubmitAnswer("bob", "Q1", "goed", testBasePoints, time.Now())
+		if !s.AllAnsweredCurrent([]string{"alice", "bob"}) {
+			t.Errorf("AllAnsweredCurrent = false, want true")
+		}
+	})
+
+	t.Run("false when someone has not answered", func(t *testing.T) {
+		s := setup(t)
+		_, _ = s.SubmitAnswer("alice", "Q1", "went", testBasePoints, time.Now())
+		if s.AllAnsweredCurrent([]string{"alice", "bob"}) {
+			t.Errorf("AllAnsweredCurrent = true, want false (bob hasn't answered)")
+		}
+	})
+
+	t.Run("false for an empty connected set", func(t *testing.T) {
+		s := setup(t)
+		if s.AllAnsweredCurrent(nil) {
+			t.Errorf("AllAnsweredCurrent(nil) = true, want false")
+		}
+	})
+}
+
 func TestQuizSession_SubmitAnswer_TimedAfterLimit_ReturnsTimeUp(t *testing.T) {
 	s := twoQuestionSession(t, EndPolicyTimed, 30*time.Second)
 	_, _ = s.AddParticipant(NewParticipant("u1", s.ID, "Alice"))

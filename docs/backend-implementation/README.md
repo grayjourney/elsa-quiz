@@ -170,9 +170,15 @@ Two end policies, both immune to absent players:
 - **manual:** the host calls advance/end. `AdvanceQuestion(at)` moves to the next
   question; advancing past the last one auto-completes the session. `Complete()`
   ends it immediately. Missed questions simply score 0.
-- **timed:** each question has a limit; a submission after `openedAt + TimeLimit`
-  is rejected with `ErrTimeUp`. The handler's timer advances the question when the
-  limit elapses, so one idle player never blocks the room.
+- **timed:** each question has a limit. The handler's `scheduler` holds a per-session
+  `time.AfterFunc`: when the limit elapses it auto-advances; it also advances *early*
+  the moment every connected participant has answered; and it auto-completes after
+  the last question. A submission after the limit is additionally rejected with
+  `ErrTimeUp`. So one idle player never blocks the room.
+
+  All three advance triggers (timer, all-answered, host) route through the
+  aggregate's `AdvanceIfCurrent(questionID)`, which advances **only if that question
+  is still current** — concurrent triggers can't double-advance.
 
 ---
 
@@ -200,6 +206,7 @@ All files are new (greenfield). Layout follows `docs/03-architecture.md §5`.
 | `internal/handler/connection_manager.go` | Per-session connection registry + broadcast (one writer goroutine per client). |
 | `internal/handler/ws_handler.go` | WS upgrade, join, read loop, broadcast on answer. |
 | `internal/handler/metrics.go` | Prometheus collectors + `/metrics` handler. |
+| `internal/handler/scheduler.go` | Per-session timers for `timed` auto-advance. |
 | `cmd/server/main.go` | Wiring, `slog`, graceful shutdown, `-health` flag. |
 
 ### Test code (24 test functions)
@@ -421,4 +428,4 @@ WebSocket; REST control API; Docker; observability). Remaining nice-to-haves:
 | `godog` BDD feature files | Optional — the `docs/02-test-cases.md` scenarios are already covered by table-driven unit tests + the `e2e_test.go` integration suite |
 | Grafana dashboard JSON | Datasource is provisioned; a pre-built dashboard panel set could be added |
 | Redis-backed store + pub/sub | Designed for (the `Store` interface + broadcast seam); enables horizontal scaling |
-| PRD/architecture sync | Formalize **FR-5 Quiz End Policy** and note the `crypto/rand` ID choice |
+| Architecture note | The `crypto/rand` ID choice (vs the plan's `google/uuid`) could be reflected in `docs/03` |

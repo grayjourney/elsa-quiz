@@ -1,9 +1,9 @@
 # Product Requirements Document (PRD)
 # Real-Time Vocabulary Quiz — ELSA English Learning Platform
 
-**Version:** 1.0  
-**Date:** 2026-06-13  
-**Status:** Draft  
+**Version:** 1.1  
+**Date:** 2026-06-15  
+**Status:** Approved (FR-5 added; implemented)  
 **Author:** Business Analysis (AI-Assisted)
 
 ---
@@ -101,6 +101,25 @@ The Real-Time Vocabulary Quiz is a competitive, multiplayer quiz feature for an 
 | FR-4.4 | Leaderboard shall display rank position for each participant | Must Have |
 | FR-4.5 | System shall broadcast leaderboard updates to all connected clients in real time | Must Have |
 | FR-4.6 | System shall handle tie-breaking consistently (e.g., earlier submission wins) | Should Have |
+
+### FR-5: Quiz End Policy & Advancement
+
+A quiz must run to completion without stalling on an absent player. The host
+chooses an **end policy** at session creation that governs how questions advance
+and how the quiz ends.
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| FR-5.1 | System shall let the host choose an end policy at session creation: `manual` or `timed` | Must Have |
+| FR-5.2 | Under `manual` policy, the host shall advance each question and end the quiz on demand | Must Have |
+| FR-5.3 | Under `timed` policy, each question shall have a time limit and auto-advance when the limit expires | Must Have |
+| FR-5.4 | Under `timed` policy, a question shall advance early once all connected participants have answered | Should Have |
+| FR-5.5 | Quiz progression shall never be blocked by an absent/disconnected (AFK) participant; missed questions score 0 | Must Have |
+| FR-5.6 | `timed` policy shall reject a non-positive time limit at creation with a clear error | Must Have |
+| FR-5.7 | Advancing past the final question (any policy) shall complete the session and broadcast the final leaderboard | Must Have |
+
+> **Invariant:** progress depends only on **active (connected) participants and/or
+> the clock** — never on a specific participant answering.
 
 ---
 
@@ -268,7 +287,7 @@ AND the session is marked as completed
 
 | Entity | Key Attributes |
 |--------|---------------|
-| **QuizSession** | ID (unique), Status (waiting/active/completed), Questions[], CreatedAt |
+| **QuizSession** | ID (unique), Status (waiting/active/completed), **EndPolicy (manual/timed)**, **TimeLimit**, Questions[], CreatedAt |
 | **Participant** | UserID, SessionID, DisplayName, Score, **LastScoredAt**, JoinedAt |
 | **Question** | ID, QuestionText, Options[], CorrectAnswer, Order |
 | **Answer** | ParticipantID, QuestionID, SelectedAnswer, IsCorrect, SubmittedAt |

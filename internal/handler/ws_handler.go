@@ -89,6 +89,7 @@ func (a *API) processAnswer(quizID, userID string, sa SubmitAnswerPayload) {
 		UserID: userID, IsCorrect: res.IsCorrect, AwardedPoints: res.AwardedPoints, NewScore: res.NewScore,
 	}))
 	a.conns.Broadcast(quizID, Message(MsgLeaderboardUpdate, LeaderboardUpdatePayload{Entries: leaderboardEntries(board)}))
+	a.maybeAdvanceEarly(quizID)
 }
 
 func (a *API) questionPayload(s *domain.QuizSession, q domain.Question) QuestionPayload {

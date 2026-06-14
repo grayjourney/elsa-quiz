@@ -49,6 +49,7 @@ func main() {
 	<-stop
 
 	logger.Info("shutting down")
+	api.Shutdown()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {

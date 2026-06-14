@@ -48,9 +48,10 @@ Players (WebSocket clients)
 
 Each layer only knows about the layer beneath it. **All business rules live in
 `domain`** and have zero I/O, so they are fast and exhaustively unit-tested. The
-implemented increment covers `domain`, `store`, and `service`. The HTTP/WebSocket
-layer is built next on top of the same service API (its contract is already
-defined — see [`docs/postman/`](../postman/)).
+implementation now spans the **full stack**: `domain`, `store`, `service`, and the
+`handler` layer (REST + WebSocket), wired together in `cmd/server`. The runnable
+server exposes the REST control/query API, the real-time WebSocket channel,
+Prometheus `/metrics`, and pprof.
 
 ---
 
@@ -62,7 +63,8 @@ defined — see [`docs/postman/`](../postman/)).
 | Store | `internal/store` | Persist & retrieve sessions behind an interface | `domain` |
 | Service | `internal/service` | Orchestrate use-cases (create/join/start, submit→score→leaderboard) | `domain`, `store` |
 | ID | `pkg/id` | Generate unique, URL-safe IDs | nothing |
-| Handler/Server | `internal/handler`, `internal/server` | WebSocket/HTTP transport, broadcasting, wiring — **next increment** | `service` |
+| Handler | `internal/handler` | REST + WebSocket transport, connection manager, broadcasting, Prometheus metrics | `service` |
+| Server | `cmd/server` | Wiring, `slog`, graceful shutdown, `-health` self-check | `handler` |
 
 **Why this shape?** Clean architecture (ADR-001/004): the core is independent of
 transport and storage, so we can unit-test rules without a network or DB, and
@@ -193,6 +195,12 @@ All files are new (greenfield). Layout follows `docs/03-architecture.md §5`.
 | `internal/service/session_service.go` | Create / join / start orchestration. |
 | `internal/service/scoring_service.go` | Submit → score → recompute leaderboard. |
 | `internal/service/leaderboard_service.go` | Read current leaderboard. |
+| `internal/handler/api.go` | REST routes, handlers, error→HTTP-status mapping, pprof, `/metrics`. |
+| `internal/handler/message.go` | WebSocket message envelope + typed payloads. |
+| `internal/handler/connection_manager.go` | Per-session connection registry + broadcast (one writer goroutine per client). |
+| `internal/handler/ws_handler.go` | WS upgrade, join, read loop, broadcast on answer. |
+| `internal/handler/metrics.go` | Prometheus collectors + `/metrics` handler. |
+| `cmd/server/main.go` | Wiring, `slog`, graceful shutdown, `-health` flag. |
 
 ### Test code (24 test functions)
 
@@ -271,6 +279,31 @@ func NewLeaderboardService(st store.Store) *LeaderboardService
 func (svc *LeaderboardService) GetLeaderboard(quizID string) ([]domain.LeaderboardEntry, error)
 ```
 
+### Transport endpoints
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/api/health` | Liveness + active-session count |
+| `GET` | `/metrics` | Prometheus metrics |
+| `GET` | `/debug/pprof/…` | Profiling |
+| `POST` | `/api/sessions` | Create session |
+| `GET` | `/api/sessions/{id}` | Session state |
+| `POST` | `/api/sessions/{id}/participants` | Join |
+| `POST` | `/api/sessions/{id}/start` · `/advance` · `/end` | Host controls (broadcast over WS) |
+| `POST` | `/api/sessions/{id}/answers` | Submit answer (REST mirror of the WS message) |
+| `GET` | `/api/sessions/{id}/leaderboard` | Current leaderboard |
+| `GET` | `/ws?quiz_id=&user_id=&name=` | WebSocket: join + real-time messaging |
+
+**WebSocket messages** (envelope: `{"type": "...", "payload": {...}}`):
+
+- client → server: `submit_answer`
+- server → client: `join_confirmed`, `user_joined`, `question`, `score_update`,
+  `leaderboard_update`, `quiz_ended`, `error`
+
+Host actions (`start`/`advance`/`end`) are REST calls; the server pushes the
+resulting `question` / `quiz_ended` to all connected clients. Full payload shapes
+and samples are in [`docs/postman/`](../postman/).
+
 The full error catalog (`Code` → `Message`) used across the API:
 
 | Code | Message |
@@ -288,6 +321,7 @@ The full error catalog (`Code` → `Message`) used across the API:
 | `invalid_time_limit` | Time limit must be greater than zero |
 | `invalid_question` | Question is invalid |
 | `invalid_session_state` | Operation not allowed in the current session state |
+| `participant_not_found` | Participant has not joined this quiz session |
 
 ---
 
@@ -328,22 +362,30 @@ The full error catalog (`Code` → `Message`) used across the API:
 
 ---
 
-## 8. Local testing
+## 8. Local testing & running
 
-No server runs yet (transport is the next increment), so verification is the Go
-test suite. From the repo root:
-
+**Run the server** (see the root [`README.md`](../../README.md) for full setup):
 ```bash
-go test ./...                                  # all packages green
-go test -race ./...                            # concurrency-safe (no races)
-go vet ./internal/... ./pkg/...                # clean
-go build ./internal/... ./pkg/...              # compiles
-golangci-lint run ./internal/... ./pkg/...     # 0 issues
-go test -cover ./internal/... ./pkg/...        # coverage report
+make run        # native on :8080  (or `make up` for the full Docker stack)
+curl localhost:8080/api/health
 ```
 
-Expected coverage: domain ~93.7%, service ~93.9%, store 100%, id 75% (only the
-unreachable CSPRNG-panic branch is uncovered).
+**Run the tests** (unit + real-WebSocket integration):
+```bash
+make test          # all packages green
+make test-race     # concurrency-safe (no races)
+make lint          # 0 issues
+make test-cover    # coverage report
+```
+
+Expected coverage: domain ~93.7%, service ~93.9%, store 100%, handler ~82%, id 75%
+(only the unreachable CSPRNG-panic branch is uncovered).
+
+The `handler` package includes a real-WebSocket integration test
+(`ws_integration_test.go`) that dials two clients, starts a quiz, submits an
+answer, and asserts both clients receive `score_update` + `leaderboard_update` —
+the end-to-end real-time path — and an `e2e_test.go` that walks the
+`docs/02-test-cases.md` scenarios against a live server.
 
 Targeted runs:
 
@@ -371,14 +413,12 @@ is already published as a Postman collection — see [`docs/postman/`](../postma
 
 ## 9. What's next
 
-| Plan step | Work |
-|-----------|------|
-| 13–16 | WebSocket message protocol, connection manager, WS + HTTP handlers (`gorilla/websocket`) |
-| 17 | Server wiring, graceful shutdown, `slog`, Prometheus `/metrics`, pprof |
-| 18–19 | Integration tests + `godog` BDD feature files |
-| 1a/1b/22 | Dockerfile, docker-compose (two run modes), Makefile, runnable README |
-| docs | Formalize **FR-5 Quiz End Policy** in PRD/architecture |
+The core challenge is complete (real-time participation, scoring, leaderboard over
+WebSocket; REST control API; Docker; observability). Remaining nice-to-haves:
 
-The handler layer will call the existing `service` API unchanged and add only
-transport concerns (connection tracking + broadcasting), following the contract
-in [`docs/postman/`](../postman/).
+| Item | Notes |
+|------|-------|
+| `godog` BDD feature files | Optional — the `docs/02-test-cases.md` scenarios are already covered by table-driven unit tests + the `e2e_test.go` integration suite |
+| Grafana dashboard JSON | Datasource is provisioned; a pre-built dashboard panel set could be added |
+| Redis-backed store + pub/sub | Designed for (the `Store` interface + broadcast seam); enables horizontal scaling |
+| PRD/architecture sync | Formalize **FR-5 Quiz End Policy** and note the `crypto/rand` ID choice |

@@ -16,11 +16,11 @@ Gherkin scenarios, with full headers, payloads, auth notes, sample responses, an
 2. Select the **Real-Time Quiz — Local** environment (top-right).
 3. Ensure the server is running on `localhost:8080` (next implementation increment).
 
-> **Status:** the HTTP/WebSocket server is the next build increment. This
-> collection is the **contract** that increment implements — the
-> domain/store/service core behind it is already built and tested. Until the
-> server exists, the collection is the executable API spec (read the requests +
-> example responses); once it's up, **Run collection** executes the suite.
+> **Status:** the server is **implemented** — start it with `make run` (native) or
+> `make up` (Docker), then **Run collection** executes the REST suite against
+> `localhost:8080`. The real-time WebSocket channel (join + broadcasts) is in the
+> **Realtime (WebSocket)** folder; open it as a Postman WebSocket request, or see
+> the end-to-end flow validated automatically in `internal/handler/ws_integration_test.go`.
 
 ## How it's organized
 

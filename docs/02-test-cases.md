@@ -161,6 +161,12 @@ Feature: Real-Time Quiz Participation
     When  "Alice" submits answer "went" for question "Q-NONEXISTENT"
     Then  the system returns an error "Question not found"
     And   "Alice"'s score remains unchanged
+
+  Scenario: Submitting an answer without having joined the session
+    Given "Mallory" is not a participant in session "QUIZ-ABC"
+    When  "Mallory" submits answer "went" for question "Q1"
+    Then  the system returns an error "Participant has not joined this quiz session"
+    And   no score is recorded for "Mallory"
 ```
 
 ---
@@ -525,14 +531,14 @@ Feature: Input Validation
 | Feature Area              | Scenarios | Priority |
 |---------------------------|-----------|----------|
 | Quiz Session Management   | 8         | P1       |
-| Quiz Participation        | 5         | P1       |
+| Quiz Participation        | 6         | P1       |
 | Score Updates             | 5         | P1       |
 | Leaderboard               | 5         | P1       |
 | Connection & Reliability  | 4         | P1       |
 | Session Lifecycle         | 13        | P1       |
 | Performance Under Load    | 2         | P2       |
 | Input Validation          | 2         | P2       |
-| **Total**                 | **44**    |          |
+| **Total**                 | **45**    |          |
 
 ### Requirements Traceability
 
@@ -544,6 +550,7 @@ Feature: Input Validation
 | FR-2.5 Late-joining users                | "Joining a quiz session already in progress (late join)"  |
 | FR-2.2 / FR-2.3 Answer + validation      | "Submitting a correct / incorrect answer"                 |
 | FR-2.4 Duplicate prevention              | "Preventing duplicate answer submissions"                 |
+| FR-2.2 Only participants may answer       | "Submitting an answer without having joined the session"  |
 | FR-3.1–3.5 Score calc + broadcast        | All "Real-Time Score Updates" scenarios                   |
 | FR-4.1–4.5 Leaderboard ranking/broadcast | "Leaderboard displays / updates / is broadcast"           |
 | FR-4.6 Tie-breaking (LastScoredAt)       | "Tie-breaking by earlier submission time"                 |
@@ -565,4 +572,7 @@ Feature: Input Validation
 > is mapped above; the late-join scenario closed the FR-2.5 gap; the Session Lifecycle
 > feature was rewritten to remove the liveness bug where one AFK participant could block
 > quiz completion indefinitely — replaced with `manual`/`timed` end policies that depend
-> only on active participants and/or the clock.
+> only on active participants and/or the clock. The *"Submitting an answer without having
+> joined the session"* scenario was added after a **live API run** of the implementation
+> revealed the server returned the misleading `session_not_found` for a non-participant;
+> the code was fixed (TDD) to return `participant_not_found` and this scenario now pins it.

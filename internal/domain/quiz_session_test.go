@@ -40,7 +40,7 @@ func TestNewQuizSession_TimedRequiresPositiveLimit(t *testing.T) {
 
 func TestQuizSession_AddParticipant_AddsToList(t *testing.T) {
 	s := twoQuestionSession(t, EndPolicyManual, 0)
-	if err := s.AddParticipant(NewParticipant("u1", s.ID, "Alice")); err != nil {
+	if _, err := s.AddParticipant(NewParticipant("u1", s.ID, "Alice")); err != nil {
 		t.Fatalf("AddParticipant() = %v, want nil", err)
 	}
 	if got := len(s.Participants()); got != 1 {
@@ -51,9 +51,27 @@ func TestQuizSession_AddParticipant_AddsToList(t *testing.T) {
 func TestQuizSession_AddParticipant_ToCompletedSession_ReturnsError(t *testing.T) {
 	s := twoQuestionSession(t, EndPolicyManual, 0)
 	s.Complete()
-	err := s.AddParticipant(NewParticipant("u1", s.ID, "Alice"))
+	_, err := s.AddParticipant(NewParticipant("u1", s.ID, "Alice"))
 	if !errors.Is(err, ErrSessionEnded) {
 		t.Errorf("AddParticipant() to completed = %v, want ErrSessionEnded", err)
+	}
+}
+
+func TestQuizSession_AddParticipant_Idempotent_PreservesExisting(t *testing.T) {
+	s := twoQuestionSession(t, EndPolicyManual, 0)
+	p1, _ := s.AddParticipant(NewParticipant("u1", s.ID, "Alice"))
+	p1.AddScore(30, time.Now())
+
+	// Re-join with a fresh participant object (a reconnect) must NOT reset state.
+	got, err := s.AddParticipant(NewParticipant("u1", s.ID, "Alice"))
+	if err != nil {
+		t.Fatalf("rejoin = %v, want nil", err)
+	}
+	if got.Score != 30 {
+		t.Errorf("rejoined score = %d, want 30 (existing preserved)", got.Score)
+	}
+	if n := len(s.Participants()); n != 1 {
+		t.Errorf("participant count = %d, want 1 (not duplicated)", n)
 	}
 }
 
@@ -99,7 +117,7 @@ func TestQuizSession_AdvanceQuestion_MovesToNextThenCompletes(t *testing.T) {
 
 func TestQuizSession_SubmitAnswer_Correct_IncreasesScoreAndStampsTime(t *testing.T) {
 	s := twoQuestionSession(t, EndPolicyManual, 0)
-	_ = s.AddParticipant(NewParticipant("u1", s.ID, "Alice"))
+	_, _ = s.AddParticipant(NewParticipant("u1", s.ID, "Alice"))
 	_ = s.Start(time.Now())
 	at := time.Date(2026, 6, 13, 10, 0, 0, 0, time.UTC)
 
@@ -118,7 +136,7 @@ func TestQuizSession_SubmitAnswer_Correct_IncreasesScoreAndStampsTime(t *testing
 
 func TestQuizSession_SubmitAnswer_Incorrect_NoScoreChange(t *testing.T) {
 	s := twoQuestionSession(t, EndPolicyManual, 0)
-	_ = s.AddParticipant(NewParticipant("u1", s.ID, "Alice"))
+	_, _ = s.AddParticipant(NewParticipant("u1", s.ID, "Alice"))
 	_ = s.Start(time.Now())
 
 	res, err := s.SubmitAnswer("u1", "Q1", "goed", testBasePoints, time.Now())
@@ -133,7 +151,7 @@ func TestQuizSession_SubmitAnswer_Incorrect_NoScoreChange(t *testing.T) {
 func TestQuizSession_SubmitAnswer_Errors(t *testing.T) {
 	setup := func(t *testing.T) *QuizSession {
 		s := twoQuestionSession(t, EndPolicyManual, 0)
-		_ = s.AddParticipant(NewParticipant("u1", s.ID, "Alice"))
+		_, _ = s.AddParticipant(NewParticipant("u1", s.ID, "Alice"))
 		_ = s.Start(time.Now())
 		return s
 	}
@@ -174,8 +192,8 @@ func TestQuizSession_SubmitAnswer_Errors(t *testing.T) {
 	t.Run("unknown participant", func(t *testing.T) {
 		s := setup(t)
 		_, err := s.SubmitAnswer("ghost", "Q1", "went", testBasePoints, time.Now())
-		if err == nil {
-			t.Errorf("err = nil, want error for unknown participant")
+		if !errors.Is(err, ErrParticipantNotFound) {
+			t.Errorf("err = %v, want ErrParticipantNotFound (not session-not-found — the session exists)", err)
 		}
 	})
 
@@ -191,7 +209,7 @@ func TestQuizSession_SubmitAnswer_Errors(t *testing.T) {
 
 func TestQuizSession_SubmitAnswer_TimedAfterLimit_ReturnsTimeUp(t *testing.T) {
 	s := twoQuestionSession(t, EndPolicyTimed, 30*time.Second)
-	_ = s.AddParticipant(NewParticipant("u1", s.ID, "Alice"))
+	_, _ = s.AddParticipant(NewParticipant("u1", s.ID, "Alice"))
 	opened := time.Date(2026, 6, 13, 10, 0, 0, 0, time.UTC)
 	_ = s.Start(opened)
 
@@ -202,7 +220,7 @@ func TestQuizSession_SubmitAnswer_TimedAfterLimit_ReturnsTimeUp(t *testing.T) {
 	}
 
 	s2 := twoQuestionSession(t, EndPolicyTimed, 30*time.Second)
-	_ = s2.AddParticipant(NewParticipant("u1", s2.ID, "Alice"))
+	_, _ = s2.AddParticipant(NewParticipant("u1", s2.ID, "Alice"))
 	_ = s2.Start(opened)
 	if _, err := s2.SubmitAnswer("u1", "Q1", "went", testBasePoints, opened.Add(5*time.Second)); err != nil {
 		t.Errorf("in-time submit err = %v, want nil", err)

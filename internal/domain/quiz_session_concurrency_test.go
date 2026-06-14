@@ -18,7 +18,7 @@ func TestQuizSession_ConcurrentSubmissions_NoRaceNoLostScores(t *testing.T) {
 		t.Fatalf("NewQuizSession() = %v", err)
 	}
 	for i := range n {
-		_ = s.AddParticipant(NewParticipant(fmt.Sprintf("u%d", i), s.ID, fmt.Sprintf("user%d", i)))
+		_, _ = s.AddParticipant(NewParticipant(fmt.Sprintf("u%d", i), s.ID, fmt.Sprintf("user%d", i)))
 	}
 	_ = s.Start(time.Now())
 

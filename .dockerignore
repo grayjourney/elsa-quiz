@@ -1,0 +1,12 @@
+.git
+.gitignore
+.skill
+docs
+*.md
+bin
+coverage.out
+coverage.html
+.env
+.idea
+.vscode
+**/*_test.go

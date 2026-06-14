@@ -532,6 +532,28 @@
           ]
         },
         {
+          "name": "Submit as non-participant → 404 participant_not_found",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('404 Not Found', () => pm.response.to.have.status(404));", "pm.test('code participant_not_found', () => pm.expect(pm.response.json().code).to.eql('participant_not_found'));" ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "X-User-ID", "value": "mallory", "description": "A user who never joined this session" } ],
+            "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/answers", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "answers"] },
+            "body": { "mode": "raw", "raw": "{\n  \"questionId\": \"Q1\",\n  \"answer\": \"went\"\n}" },
+            "description": "Covers: *Real-Time Quiz Participation → Submitting an answer without having joined the session* → \"Participant has not joined this quiz session\". (Found by a live API run; the server originally returned the misleading session_not_found.)"
+          },
+          "response": [
+            {
+              "name": "404 Not Found",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/api/sessions/{{quizId}}/answers", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "{{quizId}}", "answers"] } },
+              "status": "Not Found",
+              "code": 404,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"code\": \"participant_not_found\",\n  \"message\": \"Participant has not joined this quiz session\"\n}"
+            }
+          ]
+        },
+        {
           "name": "Answer after quiz ended → 409 quiz_ended",
           "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('409 Conflict', () => pm.response.to.have.status(409));", "pm.test('code quiz_ended', () => pm.expect(pm.response.json().code).to.eql('quiz_ended'));" ] } } ],
           "request": {

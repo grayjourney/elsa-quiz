@@ -23,4 +23,5 @@ var (
 	ErrInvalidQuestion     = &Error{Code: "invalid_question", Message: "Question is invalid"}
 	ErrInvalidSessionState = &Error{Code: "invalid_session_state", Message: "Operation not allowed in the current session state"}
 	ErrSessionExists       = &Error{Code: "session_exists", Message: "Quiz session already exists"}
+	ErrParticipantNotFound = &Error{Code: "participant_not_found", Message: "Participant has not joined this quiz session"}
 )

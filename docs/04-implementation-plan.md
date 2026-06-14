@@ -1,10 +1,30 @@
 # Implementation Plan — Real-Time Vocabulary Quiz
 # TDD-Driven, Go Implementation
 
-**Version:** 1.0  
-**Date:** 2026-06-13  
-**Status:** Ready for Execution  
+**Version:** 1.1  
+**Date:** 2026-06-14  
+**Status:** Core complete (Steps 1–18, 20 done) — see Progress below  
 **Derived From:** [PRD](./01-product-requirements.md) · [Test Cases](./02-test-cases.md) · [Architecture](./03-architecture.md)
+
+---
+
+## Progress (2026-06-14)
+
+| Phase / Steps | Status |
+|---------------|--------|
+| 1 — Foundation (module, structure, **Docker**, **Makefile**), 2 ID gen | ✅ done |
+| 2 — Domain (Steps 3–8) | ✅ done |
+| 3 — Store (Step 9) | ✅ done |
+| 4 — Services (Steps 10–12) | ✅ done |
+| 5 — Handlers: WS protocol/conn-manager/WS handler/HTTP (Steps 13–16) | ✅ done |
+| 6 — Server wiring, slog, graceful shutdown, `/metrics`, pprof (Step 17) | ✅ done |
+| 7 — Integration tests (Step 18: full flow, reconnect, concurrency over WS) | ✅ done |
+| 8 — Prometheus instrumentation (Step 20), validation (21), README (22) | ✅ done |
+| 7 — `godog` BDD (Step 19) | ⏳ optional — covered by Go integration/e2e tests |
+
+> Deviations from the original step text: ID generator uses stdlib `crypto/rand`
+> (not `google/uuid`); HTTP wiring lives in `cmd/server/main.go` (no separate
+> `internal/server` package); `manual`/`timed` end policies were added (FR-5).
 
 ---
 

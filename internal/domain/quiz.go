@@ -88,14 +88,20 @@ func NewQuizSession(id string, questions []Question, policy EndPolicy, timeLimit
 	}, nil
 }
 
-func (s *QuizSession) AddParticipant(p *Participant) error {
+// AddParticipant registers p and returns it. If a participant with the same
+// UserID already joined, the existing one is returned unchanged (a reconnect):
+// their score and answered-set are preserved across a dropped connection.
+func (s *QuizSession) AddParticipant(p *Participant) (*Participant, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.Status == StatusCompleted {
-		return ErrSessionEnded
+		return nil, ErrSessionEnded
+	}
+	if existing, ok := s.participants[p.UserID]; ok {
+		return existing, nil
 	}
 	s.participants[p.UserID] = p
-	return nil
+	return p, nil
 }
 
 func (s *QuizSession) Participant(userID string) (*Participant, bool) {
@@ -181,7 +187,7 @@ func (s *QuizSession) SubmitAnswer(userID, questionID, answer string, basePoints
 	}
 	p, ok := s.participants[userID]
 	if !ok {
-		return zero, fmt.Errorf("participant %q not in session: %w", userID, ErrSessionNotFound)
+		return zero, ErrParticipantNotFound
 	}
 	q, ok := s.currentQuestionLocked()
 	if !ok || q.ID != questionID {

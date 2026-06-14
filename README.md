@@ -21,7 +21,11 @@ the Real-Time Quiz coding challenge (see [`test.md`](./test.md)).
 | **Backend implementation guide** | [`docs/backend-implementation/`](./docs/backend-implementation/) | ✅ |
 | **API / Postman collection** | [`docs/postman/`](./docs/postman/) | ✅ |
 | Go source (domain + store + service) | [`internal/`](./internal), [`pkg/`](./pkg) | ✅ |
-| WebSocket/HTTP layer, Docker, Makefile | — | ⏳ next increment |
+| HTTP/REST + WebSocket layer | [`internal/handler/`](./internal/handler) | ✅ |
+| Server entry point (slog, graceful shutdown) | [`cmd/server/`](./cmd/server) | ✅ |
+| Observability (Prometheus `/metrics`, pprof) | [`internal/handler/metrics.go`](./internal/handler/metrics.go) | ✅ |
+| Docker, docker-compose, Makefile | `Dockerfile`, `docker-compose.yml`, `Makefile` | ✅ |
+| godog BDD feature files | — | ⏳ optional (cases covered by Go tests) |
 
 > New here? Start with this README, then read
 > [`docs/backend-implementation/README.md`](./docs/backend-implementation/README.md)
@@ -49,28 +53,47 @@ the Real-Time Quiz coding challenge (see [`test.md`](./test.md)).
 | Concern | Choice |
 |--------|--------|
 | Language | Go 1.22+ (developed on 1.26) |
-| Real-time transport | WebSocket (planned: `gorilla/websocket`) |
+| Real-time transport | WebSocket (`gorilla/websocket`) |
 | Persistence | In-memory behind a `Store` interface (swap for Redis/PG later) |
 | Architecture | Clean/layered: `domain` → `store` → `service` → `handler` |
-| Testing | `testing` + table-driven tests, `-race`, `godog` (BDD, planned) |
-| Tooling | `golangci-lint`, Makefile + Docker (planned) |
+| Observability | Prometheus (`client_golang`) `/metrics`, pprof, structured `slog` |
+| Testing | `testing` + table-driven tests, `-race`, real-WebSocket integration tests |
+| Tooling | `golangci-lint`, Makefile, multi-stage Docker + docker-compose |
 
 ---
 
-## Quick start (current state)
+## Quick start
 
-The runnable server (WebSocket/HTTP) is the next increment. Today you can build
-and exercise the full business core via the test suite:
+**Prerequisites:** Go 1.22+ (developed on 1.26) for native mode; Docker + Docker
+Compose for the container modes; `make`.
 
 ```bash
-go test ./...                                  # all packages green
-go test -race ./...                            # no data races
-go vet ./internal/... ./pkg/...                # clean
-golangci-lint run ./internal/... ./pkg/...     # 0 issues
-go test -cover ./internal/... ./pkg/...        # coverage report
+cp .env.example .env
 ```
 
-Coverage: domain **93.7%**, service **93.9%**, store **100%**.
+**Option A — everything in Docker** (no Go toolchain needed):
+```bash
+make up        # server :8080 + Prometheus :9090 + Grafana :3000
+curl localhost:8080/api/health
+make down
+```
+
+**Option B — Go server natively, infra in Docker** (fast iteration):
+```bash
+make infra-up  # Prometheus + Grafana only
+make run       # server on :8080
+make infra-down
+```
+
+**Run the tests** (unit + real-WebSocket integration):
+```bash
+make test          # all packages green
+make test-race     # no data races
+make lint          # 0 issues
+make test-cover    # coverage report
+```
+
+Coverage: domain **93.7%**, service **93.9%**, store **100%**, handler **~82%**.
 
 ---
 
@@ -78,18 +101,19 @@ Coverage: domain **93.7%**, service **93.9%**, store **100%**.
 
 ```
 .
-├── cmd/server/            # entry point (next increment)
+├── cmd/server/            # entry point: wiring, slog, graceful shutdown, -health
 ├── internal/
 │   ├── domain/            # entities + business rules (no I/O)
 │   ├── store/             # Store interface + in-memory implementation
 │   ├── service/           # application orchestration
-│   ├── handler/           # WebSocket/HTTP (next increment)
-│   └── server/            # wiring (next increment)
+│   └── handler/           # REST + WebSocket handlers, conn manager, metrics
 ├── pkg/id/                # ID generation
+├── deploy/                # Prometheus + Grafana provisioning
 ├── docs/
 │   ├── 01..04-*.md        # PRD, test cases, architecture, plan
 │   ├── backend-implementation/  # how the backend works (deep dive)
 │   └── postman/           # API contract + Postman collection
+├── Dockerfile · docker-compose.yml · Makefile · .env.example
 └── test.md                # original challenge brief
 ```
 

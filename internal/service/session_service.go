@@ -36,8 +36,8 @@ func (svc *SessionService) JoinSession(quizID, userID, displayName string) (*dom
 	if err != nil {
 		return nil, err
 	}
-	p := domain.NewParticipant(userID, quizID, displayName)
-	if err := s.AddParticipant(p); err != nil {
+	p, err := s.AddParticipant(domain.NewParticipant(userID, quizID, displayName))
+	if err != nil {
 		return nil, err
 	}
 	return p, nil

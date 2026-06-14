@@ -1,0 +1,12 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: quiz
+    static_configs:
+      # Mode A: server runs as a sibling container.
+      # Mode B: server runs on the host (reached via host.docker.internal).
+      # In each mode one target is simply reported down — harmless.
+      - targets:
+          - "quiz:8080"
+          - "host.docker.internal:8080"

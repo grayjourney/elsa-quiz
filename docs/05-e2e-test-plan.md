@@ -395,4 +395,3 @@ flakes). Verified locally on Go 1.26.1 / godog 0.15.1.
   (0). Two findings surfaced *during* implementation and are folded back into this
   doc: the `time_up` non-determinism (now `@timing` advisory) and the
   shared-server counter semantics (health/metrics assert thresholds + seed activity).
-  Full hand-off in [`tickets-details/e2e-godog-harness/`](../tickets-details/e2e-godog-harness/).

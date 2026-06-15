@@ -102,8 +102,35 @@ real WebSocket + HTTP clients via `godog`, tears it down):
 make e2e        # BLOCKING gate — 42/42 Tier-1 scenarios must pass
 make e2e-perf   # ADVISORY — @perf/@timing scenarios; warns, never blocks
 ```
-See [`docs/05-e2e-test-plan.md`](./docs/05-e2e-test-plan.md) for the design, the
-tier/gate policy, and how the 47 Gherkin scenarios map to the runnable suite.
+
+Run it against a server you started yourself (verbose, or a single feature, or a
+remote target — no orchestration):
+```bash
+go build -o bin/quiz ./cmd/server && PORT=8090 ./bin/quiz &
+E2E_BASE_URL=http://localhost:8090 E2E_WS_URL=ws://localhost:8090 \
+  E2E_TAGS='~@perf && ~@timing' go test -tags e2e -v ./tests/e2e      # all Tier-1, verbose
+# one feature: add  -godog.paths ../../features/leaderboard.feature
+# staging:     E2E_BASE_URL=https://… E2E_WS_URL=wss://…  go test -tags e2e ./tests/e2e
+```
+
+| Env var | Default | Purpose |
+|---------|---------|---------|
+| `E2E_BASE_URL` | `http://localhost:8080` | REST base URL of the target |
+| `E2E_WS_URL` | `ws://localhost:8080` | WebSocket base URL of the target |
+| `E2E_TAGS` | *(all)* | godog tag expression (`~@perf && ~@timing` blocking, `@perf,@timing` advisory) |
+| `E2E_PORT` | `8090` | port the `make` targets run the server on |
+| `GODOG_FORMAT` | `pretty` | godog output format |
+
+**Design notes.** The harness is deliberately **black-box**: it never imports
+`internal/…` and re-declares the JSON contract locally (`tests/e2e/wire.go`), so an
+accidental server-side rename surfaces as a failing scenario. godog was chosen over
+a hand-rolled Go suite (the spec is *already* Gherkin — keeps `features/` 1:1 with
+`docs/02`) and over Newman/Postman (can't meaningfully assert WebSocket broadcasts
+or concurrency). The late-answer→`time_up` case is advisory (`@timing`) because the
+timed scheduler auto-advances, making it non-deterministic black-box; it stays
+deterministically covered at the domain layer. Full design, the tier/gate policy,
+the 47-scenario coverage matrix, and every black-box adaptation are in
+[`docs/05-e2e-test-plan.md`](./docs/05-e2e-test-plan.md).
 
 ---
 

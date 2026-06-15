@@ -13,8 +13,14 @@ Each feature below is written as a standalone **Gherkin feature file**, the same
 format consumed by `godog` (Cucumber for Go). Every feature opens with a
 narrative (`In order to… / As a… / I want…`) that states the business value,
 followed by an optional `Background` of shared preconditions, then the scenarios.
-The `.feature` blocks here map 1:1 to the files under `features/` in the
-implementation plan.
+
+> ✅ **These scenarios are now executable.** They are implemented as runnable
+> `.feature` files under [`features/`](../features), driven black-box against a
+> running server by the godog harness in [`tests/e2e/`](../tests/e2e). Run them with
+> `make e2e` (blocking gate) / `make e2e-perf` (advisory). The runnable copies carry
+> a few deliberate black-box adaptations (server-generated IDs, 1-second timed
+> limits, scores reached by answering, machine error codes) — all catalogued in
+> [`docs/05-e2e-test-plan.md` §8a](./05-e2e-test-plan.md#8a-deviations-from-docs02-test-casesmd).
 
 > **Keyword alignment** follows the Gherkin convention: `Given / When / Then`,
 > with `And` / `But` continuing the previous step. Doc-strings (`"""…"""`) carry

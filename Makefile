@@ -1,6 +1,8 @@
 .DEFAULT_GOAL := help
-.PHONY: help build run tidy fmt lint test test-race test-cover \
+.PHONY: help build run tidy fmt lint test test-race test-cover e2e e2e-perf \
         docker-build up down logs ps infra-up infra-down
+
+E2E_PORT ?= 8090
 
 ## help: list available commands
 help:
@@ -40,6 +42,16 @@ test-race:
 ## test-cover: run tests with coverage summary
 test-cover:
 	go test -cover ./internal/... ./pkg/...
+
+# ---- End-to-end (black-box, godog) ----
+## e2e: boot the server and run the BLOCKING functional e2e gate (Tier 1)
+e2e:
+	E2E_TAGS='~@perf' E2E_PORT=$(E2E_PORT) ./scripts/e2e.sh
+
+## e2e-perf: run the ADVISORY e2e tier (@perf) — never fails the build
+e2e-perf:
+	@E2E_TAGS='@perf' E2E_PORT=$(E2E_PORT) ./scripts/e2e.sh || \
+	  echo "⚠️  e2e-perf: advisory failures (non-blocking) — see output above"
 
 # ---- Full Docker stack (Mode A) ----
 ## docker-build: build the production image

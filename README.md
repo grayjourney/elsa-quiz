@@ -25,7 +25,8 @@ the Real-Time Quiz coding challenge (see [`test.md`](./test.md)).
 | Server entry point (slog, graceful shutdown) | [`cmd/server/`](./cmd/server) | ✅ |
 | Observability (Prometheus `/metrics`, pprof) | [`internal/handler/metrics.go`](./internal/handler/metrics.go) | ✅ |
 | Docker, docker-compose, Makefile | `Dockerfile`, `docker-compose.yml`, `Makefile` | ✅ |
-| godog BDD feature files | — | ⏳ optional (cases covered by Go tests) |
+| **Black-box E2E (godog, vs. a running server)** | [`features/`](./features), [`tests/e2e/`](./tests/e2e), [`docs/05-e2e-test-plan.md`](./docs/05-e2e-test-plan.md) | ✅ |
+| E2E CI pipeline (blocking + advisory) | [`.github/workflows/e2e.yml`](./.github/workflows/e2e.yml) | ✅ |
 
 > New here? Start with this README, then read
 > [`docs/backend-implementation/README.md`](./docs/backend-implementation/README.md)
@@ -95,6 +96,43 @@ make test-cover    # coverage report
 
 Coverage: domain **93.7%**, service **93.9%**, store **100%**, handler **~82%**.
 
+**Run the end-to-end gate** (black-box: builds + boots the server, drives it with
+real WebSocket + HTTP clients via `godog`, tears it down):
+```bash
+make e2e        # BLOCKING gate — 43/43 Tier-1 scenarios must pass
+make e2e-perf   # ADVISORY — @perf scenarios; warns, never blocks
+```
+
+Run it against a server you started yourself (verbose, or a single feature, or a
+remote target — no orchestration):
+```bash
+go build -o bin/quiz ./cmd/server && PORT=8090 ./bin/quiz &
+E2E_BASE_URL=http://localhost:8090 E2E_WS_URL=ws://localhost:8090 \
+  E2E_TAGS='~@perf && ~@timing' go test -tags e2e -v ./tests/e2e      # all Tier-1, verbose
+# one feature: add  -godog.paths ../../features/leaderboard.feature
+# staging:     E2E_BASE_URL=https://… E2E_WS_URL=wss://…  go test -tags e2e ./tests/e2e
+```
+
+| Env var | Default | Purpose |
+|---------|---------|---------|
+| `E2E_BASE_URL` | `http://localhost:8080` | REST base URL of the target |
+| `E2E_WS_URL` | `ws://localhost:8080` | WebSocket base URL of the target |
+| `E2E_TAGS` | *(all)* | godog tag expression (`~@perf && ~@timing` blocking, `@perf,@timing` advisory) |
+| `E2E_PORT` | `8090` | port the `make` targets run the server on |
+| `GODOG_FORMAT` | `pretty` | godog output format |
+
+**Design notes.** The harness is deliberately **black-box**: it never imports
+`internal/…` and re-declares the JSON contract locally (`tests/e2e/wire.go`), so an
+accidental server-side rename surfaces as a failing scenario. godog was chosen over
+a hand-rolled Go suite (the spec is *already* Gherkin — keeps `features/` 1:1 with
+`docs/02`) and over Newman/Postman (can't meaningfully assert WebSocket broadcasts
+or concurrency). Building the suite also surfaced a real server bug — a late answer
+to an *expired* timed question returned `question_not_found` instead of `time_up`;
+fixed in `internal/domain` (TDD), which let that scenario become a deterministic
+blocking test. Full design, the tier/gate policy, the 47-scenario coverage matrix,
+and every black-box adaptation are in
+[`docs/05-e2e-test-plan.md`](./docs/05-e2e-test-plan.md).
+
 ---
 
 ## Project structure
@@ -108,9 +146,13 @@ Coverage: domain **93.7%**, service **93.9%**, store **100%**, handler **~82%**.
 │   ├── service/           # application orchestration
 │   └── handler/           # REST + WebSocket handlers, conn manager, metrics
 ├── pkg/id/                # ID generation
+├── features/              # 9 godog .feature files (the 47 scenarios, executable)
+├── tests/e2e/             # black-box e2e harness (build-tagged `e2e`, no internal imports)
+├── scripts/e2e.sh         # boot server → wait /health → run godog → tear down
 ├── deploy/                # Prometheus + Grafana provisioning
+├── .github/workflows/     # e2e CI (blocking gate + advisory perf job)
 ├── docs/
-│   ├── 01..04-*.md        # PRD, test cases, architecture, plan
+│   ├── 01..05-*.md        # PRD, test cases, architecture, plan, e2e test plan
 │   ├── backend-implementation/  # how the backend works (deep dive)
 │   └── postman/           # API contract + Postman collection
 ├── Dockerfile · docker-compose.yml · Makefile · .env.example

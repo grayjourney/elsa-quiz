@@ -297,3 +297,29 @@ func TestQuizSession_SubmitAnswer_TimedAfterLimit_ReturnsTimeUp(t *testing.T) {
 		t.Errorf("in-time submit err = %v, want nil", err)
 	}
 }
+
+// A late answer for a timed question whose window already closed (the quiz has
+// auto-advanced past it) must report time_up — the question is known, just
+// expired — not the misleading question_not_found.
+func TestQuizSession_SubmitAnswer_TimedPassedQuestion_ReturnsTimeUp(t *testing.T) {
+	s := twoQuestionSession(t, EndPolicyTimed, 30*time.Second)
+	_, _ = s.AddParticipant(NewParticipant("u1", s.ID, "Alice"))
+	opened := time.Date(2026, 6, 13, 10, 0, 0, 0, time.UTC)
+	_ = s.Start(opened)
+
+	// Timer expiry auto-advances Q1 -> Q2.
+	_, _, _ = s.AdvanceIfCurrent("Q1", opened.Add(30*time.Second))
+	if q, _ := s.CurrentQuestion(); q.ID != "Q2" {
+		t.Fatalf("precondition: current = %q, want Q2", q.ID)
+	}
+
+	_, err := s.SubmitAnswer("u1", "Q1", "went", testBasePoints, opened.Add(31*time.Second))
+	if !errors.Is(err, ErrTimeUp) {
+		t.Errorf("late submit to passed timed question err = %v, want ErrTimeUp", err)
+	}
+
+	// A genuinely unknown question id is still question_not_found.
+	if _, err := s.SubmitAnswer("u1", "Q-NONEXISTENT", "went", testBasePoints, opened.Add(31*time.Second)); !errors.Is(err, ErrQuestionNotFound) {
+		t.Errorf("unknown question err = %v, want ErrQuestionNotFound", err)
+	}
+}

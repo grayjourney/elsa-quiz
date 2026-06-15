@@ -139,6 +139,17 @@ func (s *QuizSession) Start(at time.Time) error {
 	return nil
 }
 
+// indexOfQuestionLocked returns the position of the question with id in the
+// quiz, or -1 if there is no such question. Caller must hold s.mu.
+func (s *QuizSession) indexOfQuestionLocked(id string) int {
+	for i := range s.Questions {
+		if s.Questions[i].ID == id {
+			return i
+		}
+	}
+	return -1
+}
+
 func (s *QuizSession) currentQuestionLocked() (Question, bool) {
 	if s.Status != StatusActive || s.currentIdx < 0 || s.currentIdx >= len(s.Questions) {
 		return Question{}, false
@@ -230,6 +241,14 @@ func (s *QuizSession) SubmitAnswer(userID, questionID, answer string, basePoints
 	}
 	q, ok := s.currentQuestionLocked()
 	if !ok || q.ID != questionID {
+		// In a timed quiz, an answer for a question we have already advanced past
+		// is late — its window closed — so report time_up, not question_not_found.
+		// (A question we have not reached yet, or an unknown id, is not-found.)
+		if s.EndPolicy == EndPolicyTimed {
+			if idx := s.indexOfQuestionLocked(questionID); idx >= 0 && idx < s.currentIdx {
+				return zero, ErrTimeUp
+			}
+		}
 		return zero, ErrQuestionNotFound
 	}
 	if s.EndPolicy == EndPolicyTimed && at.Sub(s.openedAt) > s.TimeLimit {

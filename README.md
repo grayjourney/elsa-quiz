@@ -99,8 +99,8 @@ Coverage: domain **93.7%**, service **93.9%**, store **100%**, handler **~82%**.
 **Run the end-to-end gate** (black-box: builds + boots the server, drives it with
 real WebSocket + HTTP clients via `godog`, tears it down):
 ```bash
-make e2e        # BLOCKING gate — 42/42 Tier-1 scenarios must pass
-make e2e-perf   # ADVISORY — @perf/@timing scenarios; warns, never blocks
+make e2e        # BLOCKING gate — 43/43 Tier-1 scenarios must pass
+make e2e-perf   # ADVISORY — @perf scenarios; warns, never blocks
 ```
 
 Run it against a server you started yourself (verbose, or a single feature, or a
@@ -126,10 +126,11 @@ E2E_BASE_URL=http://localhost:8090 E2E_WS_URL=ws://localhost:8090 \
 accidental server-side rename surfaces as a failing scenario. godog was chosen over
 a hand-rolled Go suite (the spec is *already* Gherkin — keeps `features/` 1:1 with
 `docs/02`) and over Newman/Postman (can't meaningfully assert WebSocket broadcasts
-or concurrency). The late-answer→`time_up` case is advisory (`@timing`) because the
-timed scheduler auto-advances, making it non-deterministic black-box; it stays
-deterministically covered at the domain layer. Full design, the tier/gate policy,
-the 47-scenario coverage matrix, and every black-box adaptation are in
+or concurrency). Building the suite also surfaced a real server bug — a late answer
+to an *expired* timed question returned `question_not_found` instead of `time_up`;
+fixed in `internal/domain` (TDD), which let that scenario become a deterministic
+blocking test. Full design, the tier/gate policy, the 47-scenario coverage matrix,
+and every black-box adaptation are in
 [`docs/05-e2e-test-plan.md`](./docs/05-e2e-test-plan.md).
 
 ---

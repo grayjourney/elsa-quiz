@@ -1,8 +1,8 @@
 # End-to-End (E2E) Test Plan — Real-Time Vocabulary Quiz
 
-**Version:** 1.1
+**Version:** 1.2
 **Date:** 2026-06-15
-**Status:** ✅ Implemented — `make e2e` green (42/42 Tier-1), `make e2e-perf` advisory
+**Status:** ✅ Implemented — `make e2e` green (43/43 Tier-1), `make e2e-perf` green (4/4 advisory)
 **Derived From:** [PRD](./01-product-requirements.md) · [Test Cases](./02-test-cases.md) · [Architecture](./03-architecture.md) · [Implementation Plan](./04-implementation-plan.md)
 **Harness:** `godog` v0.15.1 (Cucumber for Go) driving a **running** server over real WebSocket + HTTP
 **Code:** [`features/`](../features) (9 `.feature` files) · [`tests/e2e/`](../tests/e2e) (harness) · [`scripts/e2e.sh`](../scripts/e2e.sh) · [`.github/workflows/e2e.yml`](../.github/workflows/e2e.yml)
@@ -178,11 +178,11 @@ All **47** scenarios are mapped. Two tiers (per the agreed gate policy in [§6](
 | `score_updates.feature` | 5 | 5¹ | — | FR-3.1–3.5, AC-2 |
 | `leaderboard.feature` | 5 | 5 | — | FR-4.1–4.6, AC-3 |
 | `connection_reliability.feature` | 4 | 2 (disconnect, reconnect) | 2 (`@perf` 100-concurrent submits, concurrent-writes) | NFR-3.1–3.2, AC-4 |
-| `session_lifecycle.feature` | 13 | 12 | 1 (`@timing` late-answer → `time_up`) | FR-5.1–5.7, AC-5 |
+| `session_lifecycle.feature` | 13 | 13 | — | FR-5.1–5.7, AC-5 |
 | `performance_under_load.feature` | 2 | — | 2 (`@perf` latency p95, 50×20 throughput) | NFR-1.1, NFR-2.1–2.3 |
 | `input_validation.feature` | 2 | 2 | — | FR-2.3, FR-3 input rules |
 | `operations_observability.feature` | 2 | 2 | — | NFR-5.1, NFR-5.3 |
-| **Total** | **47** | **42** | **5** | — |
+| **Total** | **47** | **43** | **4** | — |
 
 > ¹ **Score-update timing nuance.** In Tier 1, the score scenarios assert the
 > broadcast **happens and is correct** (e.g. Alice's `newScore` becomes 20; Bob and
@@ -191,19 +191,19 @@ All **47** scenarios are mapped. Two tiers (per the agreed gate policy in [§6](
 > breach warns rather than failing. The correctness of the broadcast is blocking;
 > the wall-clock latency on a shared CI runner is not. (Observed locally: p95 ≈ 50µs.)
 
-> **`@timing` reclassification (found during implementation).** The
-> *"Rejecting a late answer after a question's time limit expired → `time_up`"*
-> scenario is **not deterministically reproducible black-box** and was moved to the
-> advisory tier (tagged `@timing`). Because the timed scheduler **auto-advances** at
-> expiry, a late answer almost always surfaces as `question_not_found` (the question
-> already moved on); `time_up` is only reachable in a sub-millisecond race window.
-> The `time_up` rejection **is** verified deterministically at the domain layer
-> (`internal/domain` with an injected clock), so coverage is not lost — only the
-> black-box reproduction is advisory.
+> **Server fix that made `time_up` deterministic (found during implementation).**
+> The *"Rejecting a late answer after a question's time limit expired → `time_up`"*
+> scenario was initially non-reproducible black-box: the timed scheduler
+> **auto-advances** at expiry, so a late answer surfaced as `question_not_found`
+> (the question had moved on) rather than `time_up`. That was a genuine **server
+> bug** — the question is *known*, its window just *closed*. Fixed in
+> `internal/domain/quiz.go`: in a timed quiz, a submit for an already-passed
+> question (index < current) now returns `time_up`. The scenario is therefore
+> deterministic from **both** paths (still-current-but-expired *and* already-advanced)
+> and is a **blocking** Tier-1 test. (Verified: 5/5 clean runs.)
 
-**Tag selection (godog legacy syntax).** Blocking gate runs `~@perf && ~@timing`;
-the advisory run uses `@perf,@timing` (comma = OR). `make e2e` and `make e2e-perf`
-set these for you.
+**Tag selection (godog legacy syntax).** Blocking gate runs `~@perf`; the advisory
+run uses `@perf`. `make e2e` and `make e2e-perf` set these for you.
 
 ---
 
@@ -329,7 +329,6 @@ of the relevant feature file):
 | **Question counts** | up to 5 | 3 for lifecycle, 5 for score/leaderboard | matched to what each scenario needs |
 | **Scores** | absolute presets (30/40/50/60) | reached by *answering N correctly* (+10 each); 60 dropped (unachievable) | black-box scores change only via correct answers |
 | **Rejections** | display message text | machine **error code** (`invalid_time_limit`, `quiz_ended`, …) | the code is the stable contract (§8) |
-| **`time_up` late answer** | Tier-1 expectation | **advisory `@timing`** | non-deterministic black-box (see §4 note) |
 | **Health "active = 2"** | exact count | **"at least N"** + scenario seeds its own sessions | the server is shared across the run; counters are process-global |
 | **Metrics `quiz_answers_total`** | assumed present | scenario first **processes an answer** | the counter isn't emitted until first used |
 | **Latency / heavy concurrency** | inline | **advisory `@perf`**, counts scaled to the harness WS buffers | load is a separate, non-blocking concern |
@@ -363,12 +362,15 @@ illustrative literals changed.
 3. ✅ **Realtime steps** — `quiz_participation` (6), `score_updates` (5),
    `leaderboard` (5), and the 2 Tier-1 `connection_reliability` scenarios.
 4. ✅ **Validation + error contract** — `input_validation` (2) + negative cases.
-5. ✅ **Tier-2 `@perf`/`@timing`** — `performance_under_load` (2) + 2 reliability
-   concurrency + 1 `@timing`; `make e2e-perf` + `.github/workflows/e2e.yml`.
+5. ✅ **Tier-2 `@perf`** — `performance_under_load` (2) + 2 reliability concurrency;
+   `make e2e-perf` + `.github/workflows/e2e.yml`.
+6. ✅ **Server fix** — late answer to an expired timed question now returns
+   `time_up` (was `question_not_found`); the scenario was promoted from advisory to
+   the blocking gate (TDD: domain RED→GREEN in `internal/domain`).
 
-**Definition of done — met:** `make e2e` exits 0 with **42/42** Tier-1 scenarios
-passing; `make e2e-perf` runs warn-only (exits 0 even when the `@timing` scenario
-flakes). Verified locally on Go 1.26.1 / godog 0.15.1.
+**Definition of done — met:** `make e2e` exits 0 with **43/43** Tier-1 scenarios
+passing; `make e2e-perf` exits 0 with **4/4** advisory scenarios passing. Verified
+locally on Go 1.26.1 / godog 0.15.1.
 
 ---
 
@@ -386,12 +388,14 @@ flakes). Verified locally on Go 1.26.1 / godog 0.15.1.
   route table in `internal/handler/api.go`, the WS message catalog in
   `internal/handler/message.go`, and the error-code mapping, so every endpoint and
   message the plan references is confirmed to exist in the code.
-- **Verification of the implementation (v1.1):** built test-first with `golang-ticket-tdd`,
-  running the godog suite after every feature increment and keeping it green.
-  Final gates: `make e2e` → exit 0 (**42/42** Tier-1), `make e2e-perf` → exit 0
-  (advisory; p95 ≈ 50µs, throughput 1000/1000), `go test ./...` and
-  `go test -race ./...` unaffected (e2e excluded without the build tag),
-  `golangci-lint run ./...` (0) and `golangci-lint run --build-tags e2e ./tests/e2e/...`
-  (0). Two findings surfaced *during* implementation and are folded back into this
-  doc: the `time_up` non-determinism (now `@timing` advisory) and the
-  shared-server counter semantics (health/metrics assert thresholds + seed activity).
+- **Verification of the implementation (v1.1–1.2):** built test-first with
+  `golang-ticket-tdd`, running the godog suite after every feature increment and
+  keeping it green. Final gates: `make e2e` → exit 0 (**43/43** Tier-1, verified
+  5/5 clean runs), `make e2e-perf` → exit 0 (**4/4**; p95 ≈ 50–170µs, throughput
+  1000/1000), `go test ./...` and `go test -race ./...` unaffected (e2e excluded
+  without the build tag), `golangci-lint run ./...` (0) and
+  `golangci-lint run --build-tags e2e ./tests/e2e/...` (0). Findings surfaced
+  *during* implementation and folded back: (v1.1) shared-server counter semantics
+  (health/metrics assert thresholds + seed activity); (v1.2) the late-answer→`time_up`
+  **server bug** — fixed in `internal/domain/quiz.go` (TDD), which both corrected
+  the API and let the scenario become a deterministic blocking gate.

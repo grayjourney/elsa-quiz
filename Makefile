@@ -46,11 +46,11 @@ test-cover:
 # ---- End-to-end (black-box, godog) ----
 ## e2e: boot the server and run the BLOCKING functional e2e gate (Tier 1)
 e2e:
-	E2E_TAGS='~@perf && ~@timing' E2E_PORT=$(E2E_PORT) ./scripts/e2e.sh
+	E2E_TAGS='~@perf' E2E_PORT=$(E2E_PORT) ./scripts/e2e.sh
 
-## e2e-perf: run the ADVISORY e2e tier (@perf, @timing) — never fails the build
+## e2e-perf: run the ADVISORY e2e tier (@perf) — never fails the build
 e2e-perf:
-	@E2E_TAGS='@perf,@timing' E2E_PORT=$(E2E_PORT) ./scripts/e2e.sh || \
+	@E2E_TAGS='@perf' E2E_PORT=$(E2E_PORT) ./scripts/e2e.sh || \
 	  echo "⚠️  e2e-perf: advisory failures (non-blocking) — see output above"
 
 # ---- Full Docker stack (Mode A) ----

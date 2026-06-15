@@ -2,7 +2,7 @@
 # Orchestrate a black-box e2e run: build + boot the server, wait for /health,
 # run the godog suite against it, then tear the server down.
 #
-#   E2E_TAGS   godog tag expression (default: blocking gate = "~@perf && ~@timing")
+#   E2E_TAGS   godog tag expression (default: blocking gate = "~@perf")
 #   E2E_PORT   port to run the server on (default 8090, to avoid clashing with 8080)
 #
 # Exits with the godog status so callers (make e2e / CI) can gate on it.
@@ -11,7 +11,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 PORT="${E2E_PORT:-8090}"
-TAGS="${E2E_TAGS:-~@perf && ~@timing}"
+TAGS="${E2E_TAGS:-~@perf}"
 BASE="http://localhost:${PORT}"
 WS="ws://localhost:${PORT}"
 

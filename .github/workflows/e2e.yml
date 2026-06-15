@@ -2,7 +2,7 @@ name: e2e
 
 # Black-box end-to-end gate (godog). See docs/05-e2e-test-plan.md.
 #   * e2e       — BLOCKING: Tier-1 functional scenarios must be 100% green.
-#   * e2e-perf  — ADVISORY: @perf/@timing scenarios; failures warn, never block.
+#   * e2e-perf  — ADVISORY: @perf scenarios; failures warn, never block.
 
 on:
   push:
@@ -42,8 +42,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Run advisory perf/timing tier
-        run: E2E_TAGS='@perf,@timing' E2E_PORT=8090 ./scripts/e2e.sh
+      - name: Run advisory perf tier
+        run: E2E_TAGS='@perf' E2E_PORT=8090 ./scripts/e2e.sh
       - name: Upload server log
         if: always()
         uses: actions/upload-artifact@v4

@@ -14,9 +14,7 @@ Feature: Session Lifecycle
   # NOTE (e2e adaptation): timed limits use 1s (REST contract is whole seconds; the
   # docs' illustrative 30s would make the suite slow); quizzes use 3 questions; and
   # rejections assert the machine error code rather than the display message.
-  # The "late answer after expiry -> time_up" case is tagged @timing (advisory):
-  # the auto-advance scheduler makes that exact error non-deterministic black-box
-  # (it usually surfaces as question_not_found). See docs/05-e2e-test-plan.md.
+  # See docs/05-e2e-test-plan.md.
 
   # ----- Configuring the End Policy at Creation -----
 
@@ -103,7 +101,6 @@ Feature: Session Lifecycle
     Then the session status changes to "completed"
     And the final leaderboard is displayed to all participants
 
-  @timing
   Scenario: Rejecting a late answer after a question's time limit expired
     Given a quiz session "QUIZ-ABC" is active with end policy "timed" and a 1 second time limit
     And "Alice" is a participant

@@ -72,6 +72,11 @@ Compose for the container modes; `make`.
 cp .env.example .env
 ```
 
+> **Host ports are configurable** via `.env` — `PORT` (quiz), `PROMETHEUS_PORT`,
+> `GRAFANA_PORT`. If one is already taken on your machine (e.g. another Grafana on
+> `3000`), set a free value there to avoid a "port is already allocated" error;
+> container-internal ports never change.
+
 **Option A — everything in Docker** (no Go toolchain needed):
 ```bash
 make up        # server :8080 + Prometheus :9090 + Grafana :3000

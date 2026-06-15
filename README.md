@@ -25,7 +25,8 @@ the Real-Time Quiz coding challenge (see [`test.md`](./test.md)).
 | Server entry point (slog, graceful shutdown) | [`cmd/server/`](./cmd/server) | ✅ |
 | Observability (Prometheus `/metrics`, pprof) | [`internal/handler/metrics.go`](./internal/handler/metrics.go) | ✅ |
 | Docker, docker-compose, Makefile | `Dockerfile`, `docker-compose.yml`, `Makefile` | ✅ |
-| godog BDD feature files | — | ⏳ optional (cases covered by Go tests) |
+| **Black-box E2E (godog, vs. a running server)** | [`features/`](./features), [`tests/e2e/`](./tests/e2e), [`docs/05-e2e-test-plan.md`](./docs/05-e2e-test-plan.md) | ✅ |
+| E2E CI pipeline (blocking + advisory) | [`.github/workflows/e2e.yml`](./.github/workflows/e2e.yml) | ✅ |
 
 > New here? Start with this README, then read
 > [`docs/backend-implementation/README.md`](./docs/backend-implementation/README.md)
@@ -95,6 +96,15 @@ make test-cover    # coverage report
 
 Coverage: domain **93.7%**, service **93.9%**, store **100%**, handler **~82%**.
 
+**Run the end-to-end gate** (black-box: builds + boots the server, drives it with
+real WebSocket + HTTP clients via `godog`, tears it down):
+```bash
+make e2e        # BLOCKING gate — 42/42 Tier-1 scenarios must pass
+make e2e-perf   # ADVISORY — @perf/@timing scenarios; warns, never blocks
+```
+See [`docs/05-e2e-test-plan.md`](./docs/05-e2e-test-plan.md) for the design, the
+tier/gate policy, and how the 47 Gherkin scenarios map to the runnable suite.
+
 ---
 
 ## Project structure
@@ -108,9 +118,13 @@ Coverage: domain **93.7%**, service **93.9%**, store **100%**, handler **~82%**.
 │   ├── service/           # application orchestration
 │   └── handler/           # REST + WebSocket handlers, conn manager, metrics
 ├── pkg/id/                # ID generation
+├── features/              # 9 godog .feature files (the 47 scenarios, executable)
+├── tests/e2e/             # black-box e2e harness (build-tagged `e2e`, no internal imports)
+├── scripts/e2e.sh         # boot server → wait /health → run godog → tear down
 ├── deploy/                # Prometheus + Grafana provisioning
+├── .github/workflows/     # e2e CI (blocking gate + advisory perf job)
 ├── docs/
-│   ├── 01..04-*.md        # PRD, test cases, architecture, plan
+│   ├── 01..05-*.md        # PRD, test cases, architecture, plan, e2e test plan
 │   ├── backend-implementation/  # how the backend works (deep dive)
 │   └── postman/           # API contract + Postman collection
 ├── Dockerfile · docker-compose.yml · Makefile · .env.example

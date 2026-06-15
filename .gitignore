@@ -7,6 +7,7 @@
 *.out
 coverage.out
 coverage.html
+e2e-server.log
 
 # Env / secrets
 .env

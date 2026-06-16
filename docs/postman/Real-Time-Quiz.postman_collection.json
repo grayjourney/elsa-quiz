@@ -86,7 +86,7 @@
                   "const b = pm.response.json();",
                   "pm.test('returns a quiz ID', () => pm.expect(b.quizId).to.be.a('string').and.not.empty);",
                   "pm.test('status is waiting', () => pm.expect(b.status).to.eql('waiting'));",
-                  "pm.collectionVariables.set('quizId', b.quizId);"
+                  "pm.collectionVariables.set('quizId', b.quizId);", "pm.environment.set('quizId', b.quizId);"
                 ]
               }
             }
@@ -208,7 +208,7 @@
         {
           "name": "Join session (Alice)",
           "event": [
-            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('201 Created', () => pm.response.to.have.status(201));", "const b = pm.response.json();", "pm.test('initial score 0', () => pm.expect(b.score).to.eql(0));", "pm.collectionVariables.set('userId', b.userId);" ] } } ],
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('201 Created', () => pm.response.to.have.status(201));", "const b = pm.response.json();", "pm.test('initial score 0', () => pm.expect(b.score).to.eql(0));", "pm.collectionVariables.set('userId', b.userId);", "pm.environment.set('userId', b.userId);" ] } } ],
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -230,7 +230,7 @@
         },
         {
           "name": "Join session (Bob)",
-          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('201 Created', () => pm.response.to.have.status(201));", "pm.collectionVariables.set('otherUserId', pm.response.json().userId);" ] } } ],
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('201 Created', () => pm.response.to.have.status(201));", "pm.collectionVariables.set('otherUserId', pm.response.json().userId);", "pm.environment.set('otherUserId', pm.response.json().userId);" ] } } ],
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],

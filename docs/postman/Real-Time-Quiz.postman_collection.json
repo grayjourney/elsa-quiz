@@ -114,15 +114,15 @@
           ]
         },
         {
-          "name": "Create session (timed policy, 30s)",
+          "name": "Create session (timed policy, 5s)",
           "event": [
-            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('201 Created', () => pm.response.to.have.status(201));", "const b = pm.response.json();", "pm.test('endPolicy timed', () => pm.expect(b.endPolicy).to.eql('timed'));", "pm.test('30s limit', () => pm.expect(b.timeLimitSeconds).to.eql(30));" ] } } ],
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('201 Created', () => pm.response.to.have.status(201));", "const b = pm.response.json();", "pm.test('endPolicy timed', () => pm.expect(b.endPolicy).to.eql('timed'));", "pm.test('5s limit', () => pm.expect(b.timeLimitSeconds).to.eql(5));", "pm.test('two questions', () => pm.expect(b.questionCount).to.eql(2));", "pm.collectionVariables.set('quizId', b.quizId);", "pm.environment.set('quizId', b.quizId);" ] } } ],
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "url": { "raw": "{{baseUrl}}/api/sessions", "host": ["{{baseUrl}}"], "path": ["api", "sessions"] },
-            "body": { "mode": "raw", "raw": "{\n  \"endPolicy\": \"timed\",\n  \"timeLimitSeconds\": 30,\n  \"questions\": [\n    {\n      \"id\": \"Q1\",\n      \"text\": \"What is the past tense of 'go'?\",\n      \"options\": [\"goed\", \"went\", \"gone\", \"going\"],\n      \"correctAnswer\": \"went\",\n      \"order\": 1\n    }\n  ]\n}" },
-            "description": "Covers: *Session Lifecycle → Creating a session with the timed end policy*."
+            "body": { "mode": "raw", "raw": "{\n  \"endPolicy\": \"timed\",\n  \"timeLimitSeconds\": 5,\n  \"questions\": [\n    {\n      \"id\": \"Q1\",\n      \"text\": \"What is the past tense of 'go'?\",\n      \"options\": [\"goed\", \"went\", \"gone\", \"going\"],\n      \"correctAnswer\": \"went\",\n      \"order\": 1\n    },\n    {\n      \"id\": \"Q2\",\n      \"text\": \"What is the plural of 'mouse'?\",\n      \"options\": [\"mouses\", \"mice\", \"mouse\", \"meese\"],\n      \"correctAnswer\": \"mice\",\n      \"order\": 2\n    }\n  ]\n}" },
+            "description": "Covers: *Session Lifecycle → Creating a session with the timed end policy*, and seeds the timed walkthrough (auto-advance, auto-complete, time_up). Saves quizId. Two questions + a short 5s limit so the timer behavior is observable; a timed quiz auto-advances when the limit expires and auto-completes after the last question, with no host action."
           },
           "response": [
             {
@@ -132,7 +132,7 @@
               "code": 201,
               "header": [{ "key": "Content-Type", "value": "application/json" }],
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"quizId\": \"QUIZ-3MN8WQ5RT2YC\",\n  \"status\": \"waiting\",\n  \"endPolicy\": \"timed\",\n  \"timeLimitSeconds\": 30,\n  \"questionCount\": 1\n}"
+              "body": "{\n  \"quizId\": \"QUIZ-3MN8WQ5RT2YC\",\n  \"status\": \"waiting\",\n  \"endPolicy\": \"timed\",\n  \"timeLimitSeconds\": 5,\n  \"questionCount\": 2\n}"
             }
           ]
         },

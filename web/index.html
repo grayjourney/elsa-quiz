@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Real-Time Quiz</title>
+<style>
+  /* Neon game-show: one deep ink ground, one electric accent, one warm pop. */
+  :root {
+    --ink: #0b0f1f;
+    --ink-2: #141a33;
+    --line: #283057;
+    --paper: #eaf0ff;
+    --muted: #8a93b8;
+    --accent: #18e3ff;     /* electric cyan */
+    --accent-2: #ff2e7e;   /* hot magenta */
+    --good: #36e27b;
+    --bad: #ff5470;
+    --display: "Bahnschrift", "DIN Alternate", "Oswald", ui-sans-serif, system-ui;
+    --body: ui-rounded, "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: var(--body);
+    color: var(--paper);
+    background:
+      radial-gradient(1100px 600px at 80% -10%, rgba(24,227,255,.14), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(255,46,126,.14), transparent 60%),
+      var(--ink);
+    display: grid;
+    place-items: center;
+    padding: 24px;
+  }
+  .wrap { width: min(960px, 100%); }
+  .screen { display: none; }
+  .screen.active { display: block; animation: rise .35s ease both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+
+  h1.brand {
+    font-family: var(--display); font-weight: 700; letter-spacing: .08em;
+    font-size: clamp(28px, 6vw, 52px); margin: 0 0 4px; text-transform: uppercase;
+  }
+  h1.brand b { color: var(--accent); }
+  .tag { color: var(--muted); margin: 0 0 28px; letter-spacing: .04em; }
+
+  .card {
+    background: linear-gradient(180deg, var(--ink-2), rgba(20,26,51,.6));
+    border: 1px solid var(--line); border-radius: 18px; padding: 24px;
+    box-shadow: 0 30px 80px -40px rgba(0,0,0,.8);
+  }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 14px 0 6px; letter-spacing: .04em; }
+  input, select {
+    width: 100%; padding: 13px 14px; border-radius: 12px; border: 1px solid var(--line);
+    background: #0d1228; color: var(--paper); font: inherit; outline: none;
+  }
+  input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(24,227,255,.18); }
+
+  .seg { display: flex; gap: 8px; margin-bottom: 6px; }
+  .seg button {
+    flex: 1; padding: 10px; border-radius: 10px; border: 1px solid var(--line);
+    background: #0d1228; color: var(--muted); cursor: pointer; font: inherit;
+  }
+  .seg button.on { color: var(--ink); background: var(--accent); border-color: var(--accent); font-weight: 700; }
+
+  .btn {
+    appearance: none; border: 0; cursor: pointer; font: inherit; font-weight: 700;
+    padding: 14px 18px; border-radius: 12px; color: var(--ink); background: var(--accent);
+    letter-spacing: .03em; transition: transform .08s ease, filter .15s ease; width: 100%;
+  }
+  .btn:hover { filter: brightness(1.08); } .btn:active { transform: translateY(1px) scale(.99); }
+  .btn.alt { background: transparent; color: var(--paper); border: 1px solid var(--line); }
+  .btn.pink { background: var(--accent-2); }
+  .btn[disabled] { opacity: .4; cursor: not-allowed; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; } .row > * { flex: 1; }
+
+  /* Game layout */
+  .game { display: grid; grid-template-columns: 1fr 300px; gap: 18px; align-items: start; }
+  @media (max-width: 760px) { .game { grid-template-columns: 1fr; } }
+  .qhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+  .pill { font-family: var(--display); letter-spacing: .1em; color: var(--muted); text-transform: uppercase; font-size: 13px; }
+  .code { font-family: var(--display); letter-spacing: .12em; color: var(--accent); cursor: copy; }
+  .question { font-size: clamp(22px, 3.4vw, 34px); font-weight: 700; margin: 8px 0 20px; line-height: 1.2; }
+  .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 520px) { .opts { grid-template-columns: 1fr; } }
+  .opt {
+    text-align: left; padding: 18px; border-radius: 14px; border: 1px solid var(--line);
+    background: #0d1228; color: var(--paper); cursor: pointer; font: inherit; font-size: 17px;
+    transition: transform .08s, border-color .15s, background .15s;
+  }
+  .opt:hover:not([disabled]) { border-color: var(--accent); transform: translateY(-2px); }
+  .opt[disabled] { cursor: default; opacity: .8; }
+  .opt.picked { border-color: var(--accent); background: rgba(24,227,255,.12); }
+  .opt.correct { border-color: var(--good); background: rgba(54,226,123,.16); }
+  .opt.wrong { border-color: var(--bad); background: rgba(255,84,112,.16); }
+
+  /* Countdown ring */
+  .ring { --p: 1; width: 54px; height: 54px; display: grid; place-items: center; border-radius: 50%;
+    background: conic-gradient(var(--accent) calc(var(--p) * 360deg), var(--line) 0); }
+  .ring span { width: 44px; height: 44px; border-radius: 50%; background: var(--ink-2); display: grid; place-items: center; font-family: var(--display); }
+
+  /* Leaderboard */
+  .board { background: var(--ink-2); border: 1px solid var(--line); border-radius: 16px; padding: 14px; }
+  .board h3 { margin: 4px 6px 12px; font-family: var(--display); letter-spacing: .1em; text-transform: uppercase; font-size: 14px; color: var(--muted); }
+  .lb { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .lb li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 11px; background: #0d1228; border: 1px solid transparent; transition: background .2s, border-color .2s; }
+  .lb li.me { border-color: var(--accent); }
+  .lb .rk { font-family: var(--display); width: 22px; color: var(--muted); }
+  .lb .nm { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lb .sc { font-family: var(--display); font-size: 18px; color: var(--accent); }
+  .lb li.bump { animation: bump .5s ease; }
+  @keyframes bump { 0%{transform:scale(1)} 30%{transform:scale(1.05); background:rgba(24,227,255,.2)} 100%{transform:scale(1)} }
+
+  .toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); background: var(--bad);
+    color: #fff; padding: 12px 18px; border-radius: 12px; font-weight: 600; opacity: 0; pointer-events: none;
+    transition: opacity .25s, transform .25s; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(-4px); }
+  .hostbar { display: flex; gap: 10px; margin-top: 18px; }
+  .center { text-align: center; } .muted { color: var(--muted); } .mt { margin-top: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ===================== LOBBY ===================== -->
+  <section id="lobby" class="screen active">
+    <h1 class="brand">Real-Time <b>Quiz</b></h1>
+    <p class="tag">Two players. One clock. Live leaderboard.</p>
+    <div class="card">
+      <label for="name">Your name</label>
+      <input id="name" placeholder="e.g. Alice" maxlength="24" />
+
+      <div class="seg mt" role="tablist">
+        <button id="tabCreate" class="on">Create a quiz</button>
+        <button id="tabJoin">Join with code</button>
+      </div>
+
+      <div id="paneCreate">
+        <label>End policy</label>
+        <div class="seg">
+          <button id="polManual" class="on" data-pol="manual">Manual (host controls)</button>
+          <button id="polTimed" data-pol="timed">Timed (auto-advance)</button>
+        </div>
+        <div id="timedOpts" style="display:none">
+          <label for="secs">Seconds per question</label>
+          <input id="secs" type="number" min="1" value="10" />
+        </div>
+        <button id="btnCreate" class="btn mt">Create &amp; host</button>
+      </div>
+
+      <div id="paneJoin" style="display:none">
+        <label for="code">Quiz code</label>
+        <input id="code" placeholder="QUIZ-XXXXXXXX" autocapitalize="characters" />
+        <button id="btnJoin" class="btn pink mt">Join</button>
+      </div>
+    </div>
+    <p class="muted center mt">Open this page in two windows to play head-to-head.</p>
+  </section>
+
+  <!-- ===================== GAME ===================== -->
+  <section id="game" class="screen">
+    <div class="game">
+      <div class="card">
+        <div class="qhead">
+          <span class="pill" id="progress">Waiting</span>
+          <div style="display:flex; align-items:center; gap:14px;">
+            <span class="pill">code <span class="code" id="codeLabel" title="click to copy"></span></span>
+            <div class="ring" id="ring" style="display:none"><span id="ringNum">–</span></div>
+          </div>
+        </div>
+
+        <div id="waiting">
+          <p class="question">Waiting for the host to start…</p>
+          <p class="muted">Share the code above with the other player. The game begins when the host hits Start.</p>
+        </div>
+
+        <div id="active" style="display:none">
+          <p class="question" id="qtext">—</p>
+          <div class="opts" id="opts"></div>
+        </div>
+
+        <div class="hostbar" id="hostbar" style="display:none">
+          <button class="btn" id="btnStart">Start quiz</button>
+          <button class="btn alt" id="btnNext" style="display:none">Next question</button>
+          <button class="btn alt" id="btnEnd" style="display:none">End quiz</button>
+        </div>
+      </div>
+
+      <aside class="board">
+        <h3>Leaderboard</h3>
+        <ul class="lb" id="lb"></ul>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ===================== RESULTS ===================== -->
+  <section id="results" class="screen">
+    <h1 class="brand">Final <b>Standings</b></h1>
+    <p class="tag" id="winner"></p>
+    <div class="card"><ul class="lb" id="finalLb"></ul></div>
+    <button class="btn mt" id="btnAgain">Play again</button>
+  </section>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script type="module">
+// ---------- built-in question set (the backend has no question bank) ----------
+const QUESTIONS = [
+  { id: "Q1", text: "What is the past tense of 'go'?",   options: ["goed","went","gone","going"],     correctAnswer: "went", order: 1 },
+  { id: "Q2", text: "What is the plural of 'mouse'?",     options: ["mouses","mice","mouse","meese"],  correctAnswer: "mice", order: 2 },
+  { id: "Q3", text: "Opposite of 'ancient'?",            options: ["old","modern","historic","vast"], correctAnswer: "modern", order: 3 },
+  { id: "Q4", text: "A synonym for 'happy'?",            options: ["sad","glad","angry","tired"],     correctAnswer: "glad", order: 4 },
+  { id: "Q5", text: "Past tense of 'eat'?",              options: ["eated","ate","eaten","eating"],   correctAnswer: "ate", order: 5 },
+];
+
+// ---------- tiny API layer (same origin) ----------
+const api = {
+  async createSession(endPolicy, timeLimitSeconds) {
+    return req("POST", "/api/sessions", null, { endPolicy, timeLimitSeconds, questions: QUESTIONS });
+  },
+  start:   (id, uid) => req("POST", `/api/sessions/${id}/start`,   uid),
+  advance: (id, uid) => req("POST", `/api/sessions/${id}/advance`, uid),
+  end:     (id, uid) => req("POST", `/api/sessions/${id}/end`,     uid),
+};
+async function req(method, path, userId, body) {
+  const res = await fetch(path, {
+    method,
+    headers: { "Content-Type": "application/json", ...(userId ? { "X-User-ID": userId } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!res.ok) throw Object.assign(new Error(data?.message || "Request failed"), { code: data?.code, status: res.status });
+  return data;
+}
+
+// ---------- WebSocket wrapper (one auto-reconnect) ----------
+class QuizSocket {
+  constructor(quizId, userId, name) { Object.assign(this, { quizId, userId, name }); this.handlers = {}; this.tries = 0; }
+  on(type, fn) { this.handlers[type] = fn; return this; }
+  connect() {
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    const u = `${proto}://${location.host}/ws?quiz_id=${encodeURIComponent(this.quizId)}&user_id=${encodeURIComponent(this.userId)}&name=${encodeURIComponent(this.name)}`;
+    this.ws = new WebSocket(u);
+    this.ws.onmessage = (e) => { const m = JSON.parse(e.data); (this.handlers[m.type] || (() => {}))(m.payload || {}); };
+    this.ws.onclose = () => { if (!this.closed && this.tries < 1) { this.tries++; setTimeout(() => this.connect(), 400); } };
+    this.ws.onerror = () => {};
+  }
+  submit(questionId, answer) { this.ws?.send(JSON.stringify({ type: "submit_answer", payload: { questionId, answer } })); }
+  close() { this.closed = true; this.ws?.close(); }
+}
+
+// ---------- app state ----------
+const S = { quizId: null, userId: crypto.randomUUID(), name: "", isHost: false, policy: "manual",
+            sock: null, players: new Map(), currentQ: null, answered: false, timer: null };
+
+const $ = (id) => document.getElementById(id);
+const show = (id) => { document.querySelectorAll(".screen").forEach(s => s.classList.remove("active")); $(id).classList.add("active"); };
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 2600); }
+
+// ---------- lobby wiring ----------
+$("tabCreate").onclick = () => { $("tabCreate").classList.add("on"); $("tabJoin").classList.remove("on"); $("paneCreate").style.display = ""; $("paneJoin").style.display = "none"; };
+$("tabJoin").onclick   = () => { $("tabJoin").classList.add("on"); $("tabCreate").classList.remove("on"); $("paneJoin").style.display = ""; $("paneCreate").style.display = "none"; };
+$("polManual").onclick = () => setPolicy("manual");
+$("polTimed").onclick  = () => setPolicy("timed");
+function setPolicy(p) { S.policy = p; $("polManual").classList.toggle("on", p === "manual"); $("polTimed").classList.toggle("on", p === "timed"); $("timedOpts").style.display = p === "timed" ? "" : "none"; }
+
+$("btnCreate").onclick = async () => {
+  if (!requireName()) return;
+  try {
+    const secs = S.policy === "timed" ? Math.max(1, parseInt($("secs").value || "10", 10)) : 0;
+    const r = await api.createSession(S.policy, secs);
+    S.quizId = r.quizId; S.isHost = true;
+    enterGame();
+  } catch (e) { toast(e.message); }
+};
+$("btnJoin").onclick = () => {
+  if (!requireName()) return;
+  const code = $("code").value.trim();
+  if (!code) return toast("Enter a quiz code");
+  S.quizId = code; S.isHost = false;
+  enterGame();
+};
+function requireName() { S.name = $("name").value.trim(); if (!S.name) { toast("Enter your name first"); return false; } return true; }
+
+// ---------- enter game: open socket ----------
+function enterGame() {
+  $("codeLabel").textContent = S.quizId;
+  $("hostbar").style.display = S.isHost ? "" : "none";
+  show("game");
+  S.sock = new QuizSocket(S.quizId, S.userId, S.name)
+    .on("join_confirmed", (p) => { upsert(p.userId, S.name, p.score); renderBoard(); })
+    .on("user_joined",    (p) => { upsert(p.userId, p.displayName, 0); renderBoard(); toast(`${p.displayName} joined`); })
+    .on("question",       onQuestion)
+    .on("score_update",   (p) => { upsert(p.userId, null, p.newScore, true); renderBoard(); })
+    .on("leaderboard_update", (p) => { applyBoard(p.entries); renderBoard(); })
+    .on("quiz_ended",     (p) => { applyBoard(p.leaderboard); endGame(); })
+    .on("error",          (p) => toast(p.message || p.code || "Error"));
+  S.sock.connect();
+}
+
+// ---------- players / leaderboard ----------
+function upsert(uid, name, score, bump) {
+  const cur = S.players.get(uid) || { name: name || "Player", score: 0 };
+  if (name) cur.name = name;
+  if (score != null) cur.score = score;
+  cur.bump = !!bump;
+  S.players.set(uid, cur);
+}
+function applyBoard(entries) {
+  (entries || []).forEach(e => upsert(e.userId, e.displayName, e.score));
+}
+function renderBoard() {
+  const rows = [...S.players.entries()].map(([uid, v]) => ({ uid, ...v }))
+    .sort((a, b) => b.score - a.score);
+  const html = rows.map((r, i) => `
+    <li class="${r.uid === S.userId ? "me" : ""} ${r.bump ? "bump" : ""}">
+      <span class="rk">${i + 1}</span><span class="nm">${esc(r.name)}</span><span class="sc">${r.score}</span>
+    </li>`).join("");
+  $("lb").innerHTML = html || `<li class="muted" style="justify-content:center">No players yet</li>`;
+  $("finalLb").innerHTML = html;
+  rows.forEach(r => r.bump = false); // one-shot
+  S.players.forEach(v => v.bump = false);
+}
+
+// ---------- questions ----------
+function onQuestion(q) {
+  S.currentQ = q; S.answered = false;
+  $("progress").textContent = `Question ${q.order}`;
+  $("waiting").style.display = "none"; $("active").style.display = "";
+  $("qtext").textContent = q.text;
+  $("opts").innerHTML = q.options.map(o => `<button class="opt" data-o="${esc(o)}">${esc(o)}</button>`).join("");
+  $("opts").querySelectorAll(".opt").forEach(b => b.onclick = () => pick(b));
+  // host: manual shows Next/End after start; timed auto-advances
+  if (S.isHost) { $("btnStart").style.display = "none"; const m = S.policy === "manual"; $("btnNext").style.display = m ? "" : "none"; $("btnEnd").style.display = m ? "" : "none"; }
+  startCountdown(q.timeLimitSeconds || 0);
+}
+function pick(btn) {
+  if (S.answered) return; S.answered = true;
+  $("opts").querySelectorAll(".opt").forEach(b => b.disabled = true);
+  btn.classList.add("picked");
+  S.sock.submit(S.currentQ.id, btn.dataset.o);
+}
+function startCountdown(secs) {
+  clearInterval(S.timer); const ring = $("ring");
+  if (!secs) { ring.style.display = "none"; return; }
+  ring.style.display = "grid"; let left = secs;
+  const tick = () => { $("ringNum").textContent = left; ring.style.setProperty("--p", Math.max(0, left / secs)); if (left <= 0) clearInterval(S.timer); left--; };
+  tick(); S.timer = setInterval(tick, 1000);
+}
+
+// ---------- host controls ----------
+$("btnStart").onclick = () => api.start(S.quizId, S.userId).catch(e => toast(e.message));
+$("btnNext").onclick  = () => api.advance(S.quizId, S.userId).catch(e => toast(e.message));
+$("btnEnd").onclick   = () => api.end(S.quizId, S.userId).catch(e => toast(e.message));
+$("codeLabel").onclick = () => { navigator.clipboard?.writeText(S.quizId); toast("Code copied"); };
+
+// ---------- end / reset ----------
+function endGame() { clearInterval(S.timer); const top = [...S.players.values()].sort((a, b) => b.score - a.score)[0];
+  $("winner").textContent = top ? `${top.name} wins with ${top.score} points` : "Game over"; renderBoard(); show("results"); }
+$("btnAgain").onclick = () => { S.sock?.close(); S.players.clear(); S.quizId = null; S.isHost = false; S.answered = false; clearInterval(S.timer);
+  $("active").style.display = "none"; $("waiting").style.display = ""; $("btnStart").style.display = ""; $("btnNext").style.display = "none"; $("btnEnd").style.display = "none"; show("lobby"); };
+
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+setPolicy("manual");
+</script>
+</body>
+</html>

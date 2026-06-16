@@ -111,6 +111,7 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("POST /api/sessions/{id}/answers", a.handleSubmitAnswer)
 	mux.HandleFunc("GET /api/sessions/{id}/leaderboard", a.handleLeaderboard)
 	mux.HandleFunc("GET /ws", a.handleWS)
+	mux.HandleFunc("GET /", a.handleIndex)
 	return mux
 }
 

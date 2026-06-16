@@ -27,6 +27,7 @@ the Real-Time Quiz coding challenge (see [`test.md`](./test.md)).
 | Docker, docker-compose, Makefile | `Dockerfile`, `docker-compose.yml`, `Makefile` | ✅ |
 | **Black-box E2E (godog, vs. a running server)** | [`features/`](./features), [`tests/e2e/`](./tests/e2e), [`docs/05-e2e-test-plan.md`](./docs/05-e2e-test-plan.md) | ✅ |
 | E2E CI pipeline (blocking + advisory) | [`.github/workflows/e2e.yml`](./.github/workflows/e2e.yml) | ✅ |
+| **Web client (bonus, embedded, no build)** | [`web/`](./web), [`docs/06-frontend.md`](./docs/06-frontend.md) | ✅ |
 
 > New here? Start with this README, then read
 > [`docs/backend-implementation/README.md`](./docs/backend-implementation/README.md)
@@ -91,6 +92,11 @@ make run       # server on :8080
 make infra-down
 ```
 
+**Play it in the browser (bonus web client):** with the server up, open
+**http://localhost:8080** in two windows — create a quiz in one, join by code in the
+other, and compete live. The single-file client is embedded in the binary (no build,
+no Node); see [`docs/06-frontend.md`](./docs/06-frontend.md).
+
 **Run the tests** (unit + real-WebSocket integration):
 ```bash
 make test          # all packages green
@@ -151,6 +157,7 @@ and every black-box adaptation are in
 │   ├── service/           # application orchestration
 │   └── handler/           # REST + WebSocket handlers, conn manager, metrics
 ├── pkg/id/                # ID generation
+├── web/                   # embedded single-file web client (served at GET /)
 ├── features/              # 9 godog .feature files (the 47 scenarios, executable)
 ├── tests/e2e/             # black-box e2e harness (build-tagged `e2e`, no internal imports)
 ├── scripts/e2e.sh         # boot server → wait /health → run godog → tear down

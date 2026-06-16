@@ -27,6 +27,7 @@ func main() {
 	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger) // handlers log significant events via slog.Default()
 	basePoints, _ := strconv.Atoi(envOr("BASE_POINTS", "10"))
 
 	api := handler.NewAPI(store.NewMemoryStore(), basePoints)

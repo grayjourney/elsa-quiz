@@ -36,5 +36,9 @@ if [ -z "$ready" ]; then
 fi
 
 echo "==> running godog (tags: ${TAGS})"
-E2E_BASE_URL="$BASE" E2E_WS_URL="$WS" E2E_TAGS="$TAGS" \
-  go test -tags e2e -count=1 ./tests/e2e
+# -v streams godog's pretty formatter live, so each feature/scenario prints as it
+# runs: green steps for pass, red for fail, plus a per-scenario PASS/FAIL line and
+# a final "N scenarios (X passed, Y failed)" summary. Without -v, go test buffers
+# package output and you only see a single "ok".
+E2E_BASE_URL="$BASE" E2E_WS_URL="$WS" E2E_TAGS="$TAGS" GODOG_FORMAT="${GODOG_FORMAT:-pretty}" \
+  go test -tags e2e -count=1 -v ./tests/e2e

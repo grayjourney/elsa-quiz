@@ -39,6 +39,23 @@ services:
     depends_on: [prometheus]
     networks: [quiznet]
 
+  # Log aggregation so slog output is viewable in Grafana (not just `make logs`).
+  # Loki stores logs; Promtail ships the quiz container's stdout into Loki.
+  loki:
+    image: grafana/loki:latest
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    networks: [quiznet]
+
+  promtail:
+    image: grafana/promtail:latest
+    profiles: ["full"]              # scrapes the quiz CONTAINER, so Mode A only
+    command: ["-config.file=/etc/promtail/config.yml"]
+    volumes:
+      - ./deploy/promtail/promtail.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on: [loki]
+    networks: [quiznet]
+
 networks:
   quiznet:
     driver: bridge

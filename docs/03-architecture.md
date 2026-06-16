@@ -143,6 +143,7 @@ Using the architecture skill's context discovery matrix:
 | **Role** | Monitoring and diagnostics |
 | **Components** | Structured logging (`slog`), Prometheus metrics, health check endpoint, pprof profiling |
 | **Key Metrics** | Active connections, messages/sec, score calculation latency, leaderboard calculation time, error rates |
+| **Log viewing** | The server logs significant events (session created, player joined, answer scored, quiz ended, errors) as JSON to stdout. In the Docker stack, **Promtail** tails the quiz container and ships those logs to **Loki**, so they are queryable in **Grafana** (a "Server logs" panel on the overview dashboard, plus Explore with `{job="quiz"}`). Without Docker, the same logs stream in the terminal via `make logs`. |
 
 ### 2.8 Quiz Scheduler (Timed Advancement)
 
@@ -230,6 +231,7 @@ Client(Alice)     Gateway       ScoringEngine    LeaderboardEngine    All Client
 | **HTTP Router** | `net/http` (stdlib) | No external dependency needed for simple routing |
 | **Logging** | `log/slog` (stdlib) | Structured logging built into Go 1.21+, zero dependencies |
 | **Metrics** | `prometheus/client_golang` | Industry standard, integrates with Grafana |
+| **Log viewing** | Grafana Loki + Promtail | Make `slog` output viewable in Grafana (Docker stack); Promtail tails the quiz container and pushes to Loki |
 | **Testing** | `testing` (stdlib) + `testify` | Table-driven tests, assertions, mocking |
 | **BDD Tests** | `godog` (Cucumber for Go) | Maps directly to Gherkin test cases |
 | **ID Generation** | `google/uuid` | RFC 4122 UUIDs for session IDs |
@@ -410,7 +412,7 @@ elsa-test/
 
 | Signal | Tool | What |
 |--------|------|------|
-| **Logs** | `slog` (structured JSON) | All significant events: join, answer, score, error |
+| **Logs** | `slog` → Promtail → Loki → Grafana | All significant events (session created, join, answer/score, quiz ended, error) as structured JSON; viewable in Grafana (Loki) or `make logs` |
 | **Metrics** | Prometheus | `quiz_active_sessions`, `quiz_connected_users`, `quiz_message_latency_ms`, `quiz_score_calculations_total`, `quiz_errors_total` |
 | **Health** | `/api/health` endpoint | Server liveness, active sessions count |
 | **Profiling** | `pprof` | CPU/memory profiling on demand |

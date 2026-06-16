@@ -79,6 +79,16 @@
         { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.95, sum by (le) (rate(quiz_score_update_seconds_bucket[5m])))", "legendFormat": "p95" },
         { "refId": "C", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.99, sum by (le) (rate(quiz_score_update_seconds_bucket[5m])))", "legendFormat": "p99" }
       ]
+    },
+    {
+      "id": 7,
+      "type": "logs",
+      "title": "Server logs (slog)",
+      "description": "Structured slog output from the quiz server, shipped to Loki by Promtail.",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 14 },
+      "options": { "showTime": true, "wrapLogMessage": true, "prettifyLogMessage": true, "enableLogDetails": true, "dedupStrategy": "none", "sortOrder": "Descending" },
+      "targets": [ { "refId": "A", "datasource": { "type": "loki", "uid": "loki" }, "expr": "{job=\"quiz\"}", "queryType": "range" } ]
     }
   ]
 }

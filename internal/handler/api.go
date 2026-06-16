@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/pprof"
 	"time"
@@ -149,6 +150,7 @@ func (a *API) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	slog.Info("session created", "quizId", s.ID, "endPolicy", string(s.EndPolicy), "questions", len(s.Questions))
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"quizId":           s.ID,
 		"status":           s.Status,
@@ -250,6 +252,7 @@ func (a *API) handleEnd(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Complete()
 	a.sched.cancel(s.ID)
+	slog.Info("quiz ended", "quizId", s.ID, "participants", len(s.Participants()))
 	board, _ := a.leaderboard.GetLeaderboard(s.ID)
 	a.conns.Broadcast(s.ID, Message(MsgQuizEnded, QuizEndedPayload{Leaderboard: leaderboardEntries(board)}))
 	writeJSON(w, http.StatusOK, map[string]any{

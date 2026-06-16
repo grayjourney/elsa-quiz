@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -35,6 +36,7 @@ func (a *API) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.conns.Register(quizID, userID, &wsConn{conn})
+	slog.Info("player joined", "quizId", quizID, "userId", userID)
 	a.metrics.connectedUsers.Inc()
 	defer func() {
 		a.conns.Unregister(quizID, userID)
@@ -85,6 +87,7 @@ func (a *API) processAnswer(quizID, userID string, sa SubmitAnswerPayload) {
 		return
 	}
 	a.metrics.record(start, outcomeLabel(res.IsCorrect))
+	slog.Info("answer scored", "quizId", quizID, "userId", userID, "correct", res.IsCorrect, "newScore", res.NewScore)
 	a.conns.Broadcast(quizID, Message(MsgScoreUpdate, ScoreUpdatePayload{
 		UserID: userID, IsCorrect: res.IsCorrect, AwardedPoints: res.AwardedPoints, NewScore: res.NewScore,
 	}))

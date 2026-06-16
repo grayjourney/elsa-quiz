@@ -101,8 +101,10 @@ no Node); see [`docs/06-frontend.md`](./docs/06-frontend.md).
 `localhost:$GRAFANA_PORT` (default `3000`) — the **Real-Time Quiz — Overview**
 dashboard is provisioned automatically (`/d/quiz-overview`): active sessions,
 connected WebSocket users, answers/sec by outcome, and broadcast-latency
-percentiles. Raw queries and scrape-target health are at **Prometheus**
-(`localhost:9090`). Structured `slog` logs stream in the terminal via `make logs`.
+percentiles, plus a **Server logs** panel (structured `slog` output shipped to
+**Loki** by Promtail — also browsable in Grafana **Explore** with `{job="quiz"}`).
+Raw metric queries and scrape-target health are at **Prometheus** (`localhost:9090`).
+The same logs also stream in the terminal via `make logs`.
 
 **Run the tests** (unit + real-WebSocket integration):
 ```bash

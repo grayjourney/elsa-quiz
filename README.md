@@ -113,7 +113,7 @@ remote target — no orchestration):
 ```bash
 go build -o bin/quiz ./cmd/server && PORT=8090 ./bin/quiz &
 E2E_BASE_URL=http://localhost:8090 E2E_WS_URL=ws://localhost:8090 \
-  E2E_TAGS='~@perf && ~@timing' go test -tags e2e -v ./tests/e2e      # all Tier-1, verbose
+  E2E_TAGS='~@perf' go test -tags e2e -v ./tests/e2e      # all Tier-1, verbose
 # one feature: add  -godog.paths ../../features/leaderboard.feature
 # staging:     E2E_BASE_URL=https://… E2E_WS_URL=wss://…  go test -tags e2e ./tests/e2e
 ```
@@ -122,7 +122,7 @@ E2E_BASE_URL=http://localhost:8090 E2E_WS_URL=ws://localhost:8090 \
 |---------|---------|---------|
 | `E2E_BASE_URL` | `http://localhost:8080` | REST base URL of the target |
 | `E2E_WS_URL` | `ws://localhost:8080` | WebSocket base URL of the target |
-| `E2E_TAGS` | *(all)* | godog tag expression (`~@perf && ~@timing` blocking, `@perf,@timing` advisory) |
+| `E2E_TAGS` | *(all)* | godog tag expression (`~@perf` blocking, `@perf` advisory) |
 | `E2E_PORT` | `8090` | port the `make` targets run the server on |
 | `GODOG_FORMAT` | `pretty` | godog output format |
 

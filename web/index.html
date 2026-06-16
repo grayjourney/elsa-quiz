@@ -309,11 +309,20 @@ function upsert(uid, name, score, bump) {
   S.players.set(uid, cur);
 }
 function applyBoard(entries) {
-  (entries || []).forEach(e => upsert(e.userId, e.displayName, e.score));
+  // The server's board is authoritative: it carries the rank, including the
+  // tie-break (who reached the score first). Record it so every client renders
+  // ties in the SAME order instead of by local join order.
+  (entries || []).forEach(e => { upsert(e.userId, e.displayName, e.score); const p = S.players.get(e.userId); if (p) p.rank = e.rank; });
+}
+// Order by score desc, then by the server's rank (authoritative tie-break),
+// then name — identical on every client. Players not yet on a server board
+// (pre-game, score 0) sort last by name.
+function sortedRows() {
+  return [...S.players.entries()].map(([uid, v]) => ({ uid, ...v }))
+    .sort((a, b) => (b.score - a.score) || ((a.rank ?? 1e9) - (b.rank ?? 1e9)) || a.name.localeCompare(b.name));
 }
 function renderBoard() {
-  const rows = [...S.players.entries()].map(([uid, v]) => ({ uid, ...v }))
-    .sort((a, b) => b.score - a.score);
+  const rows = sortedRows();
   const html = rows.map((r, i) => `
     <li class="${r.uid === S.userId ? "me" : ""} ${r.bump ? "bump" : ""}">
       <span class="rk">${i + 1}</span><span class="nm">${esc(r.name)}</span><span class="sc">${r.score}</span>
@@ -357,7 +366,7 @@ $("btnEnd").onclick   = () => api.end(S.quizId, S.userId).catch(e => toast(e.mes
 $("codeLabel").onclick = () => { navigator.clipboard?.writeText(S.quizId); toast("Code copied"); };
 
 // ---------- end / reset ----------
-function endGame() { clearInterval(S.timer); const top = [...S.players.values()].sort((a, b) => b.score - a.score)[0];
+function endGame() { clearInterval(S.timer); const top = sortedRows()[0];
   $("winner").textContent = top ? `${top.name} wins with ${top.score} points` : "Game over"; renderBoard(); show("results"); }
 $("btnAgain").onclick = () => { S.sock?.close(); S.players.clear(); S.quizId = null; S.isHost = false; S.answered = false; clearInterval(S.timer);
   $("active").style.display = "none"; $("waiting").style.display = ""; $("btnStart").style.display = ""; $("btnNext").style.display = "none"; $("btnEnd").style.display = "none"; show("lobby"); };

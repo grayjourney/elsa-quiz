@@ -97,6 +97,13 @@ make infra-down
 other, and compete live. The single-file client is embedded in the binary (no build,
 no Node); see [`docs/06-frontend.md`](./docs/06-frontend.md).
 
+**Observability (web):** with the stack up, open **Grafana** at
+`localhost:$GRAFANA_PORT` (default `3000`) — the **Real-Time Quiz — Overview**
+dashboard is provisioned automatically (`/d/quiz-overview`): active sessions,
+connected WebSocket users, answers/sec by outcome, and broadcast-latency
+percentiles. Raw queries and scrape-target health are at **Prometheus**
+(`localhost:9090`). Structured `slog` logs stream in the terminal via `make logs`.
+
 **Run the tests** (unit + real-WebSocket integration):
 ```bash
 make test          # all packages green

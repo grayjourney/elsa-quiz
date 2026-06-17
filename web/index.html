@@ -219,9 +219,10 @@ const api = {
   async createSession(endPolicy, timeLimitSeconds) {
     return req("POST", "/api/sessions", null, { endPolicy, timeLimitSeconds, questions: QUESTIONS });
   },
-  start:   (id, uid) => req("POST", `/api/sessions/${id}/start`,   uid),
-  advance: (id, uid) => req("POST", `/api/sessions/${id}/advance`, uid),
-  end:     (id, uid) => req("POST", `/api/sessions/${id}/end`,     uid),
+  start:       (id, uid) => req("POST", `/api/sessions/${id}/start`,   uid),
+  advance:     (id, uid) => req("POST", `/api/sessions/${id}/advance`, uid),
+  end:         (id, uid) => req("POST", `/api/sessions/${id}/end`,     uid),
+  leaderboard: (id)      => req("GET",  `/api/sessions/${id}/leaderboard`),
 };
 async function req(method, path, userId, body) {
   const res = await fetch(path, {
@@ -290,14 +291,29 @@ function enterGame() {
   $("hostbar").style.display = S.isHost ? "" : "none";
   show("game");
   S.sock = new QuizSocket(S.quizId, S.userId, S.name)
-    .on("join_confirmed", (p) => { upsert(p.userId, S.name, p.score); renderBoard(); })
-    .on("user_joined",    (p) => { upsert(p.userId, p.displayName, 0); renderBoard(); toast(`${p.displayName} joined`); })
+    // join_confirmed only tells me about myself, and user_joined is sent to the
+    // people already in the room (never to a new joiner). So on every join event
+    // I pull the authoritative roster from REST: this shows ALL members, the host
+    // included, the same way on every screen.
+    .on("join_confirmed", (p) => { upsert(p.userId, S.name, p.score); renderBoard(); refreshRoster(); })
+    .on("user_joined",    (p) => { upsert(p.userId, p.displayName, 0); renderBoard(); toast(`${p.displayName} joined`); refreshRoster(); })
     .on("question",       onQuestion)
     .on("score_update",   (p) => { upsert(p.userId, null, p.newScore, true); renderBoard(); })
     .on("leaderboard_update", (p) => { applyBoard(p.entries); renderBoard(); })
     .on("quiz_ended",     (p) => { applyBoard(p.leaderboard); endGame(); })
     .on("error",          (p) => toast(p.message || p.code || "Error"));
   S.sock.connect();
+}
+
+// Pull the authoritative roster (every participant, host included) from REST and
+// apply it. Errors are non-fatal: the live WS messages still fill the board.
+async function refreshRoster() {
+  if (!S.quizId) return;
+  try {
+    const data = await api.leaderboard(S.quizId);
+    applyBoard(data.leaderboard);
+    renderBoard();
+  } catch (e) { /* ignore — WS keeps the roster live */ }
 }
 
 // ---------- players / leaderboard ----------

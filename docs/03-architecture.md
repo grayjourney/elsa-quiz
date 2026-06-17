@@ -329,32 +329,33 @@ elsa-test/
 │   │   ├── session_service.go      # Quiz session management
 │   │   ├── scoring_service.go      # Answer validation & scoring
 │   │   └── leaderboard_service.go  # Leaderboard calculation
-│   ├── handler/                    # HTTP/WebSocket handlers
+│   ├── handler/                    # HTTP/WebSocket handlers + server wiring
 │   │   ├── ws_handler.go           # WebSocket upgrade & message routing
-│   │   ├── http_handler.go         # REST endpoints (create session, health)
+│   │   ├── api.go                  # REST endpoints (create/join/start/advance/end/health) + mux
+│   │   ├── static.go               # serves the embedded web client at GET /
+│   │   ├── connection_manager.go   # per-session connection registry + broadcast
+│   │   ├── scheduler.go            # timed-policy per-session timer
+│   │   ├── metrics.go              # Prometheus metrics
 │   │   └── message.go              # WebSocket message types
-│   ├── store/                      # Data access layer (interface + impl)
-│   │   ├── store.go                # Store interface
-│   │   └── memory_store.go         # In-memory implementation
-│   └── server/                     # Server setup & wiring
-│       └── server.go               # HTTP server, middleware, DI
-├── pkg/                            # Shared utilities
-│   └── id/
-│       └── generator.go            # ID generation utility
-├── docs/                           # Documentation (this directory)
-│   ├── 01-product-requirements.md
-│   ├── 02-test-cases.md
-│   ├── 03-architecture.md
-│   └── 04-implementation-plan.md
-├── features/                       # BDD feature files (Gherkin)
-│   ├── session.feature
-│   ├── scoring.feature
-│   └── leaderboard.feature
-├── deploy/                         # Local orchestration & observability config
-│   ├── prometheus/
-│   │   └── prometheus.yml          # Scrape config for the quiz server
+│   └── store/                      # Data access layer (interface + impl)
+│       ├── store.go                # Store interface
+│       └── memory_store.go         # In-memory implementation
+├── pkg/id/generator.go             # ID generation (crypto/rand)
+├── web/                            # embedded single-file web client (served at GET /)
+├── tests/e2e/                      # black-box godog suite (real WS+HTTP, build-tagged `e2e`)
+├── scripts/e2e.sh                  # boot server → run godog → tear down
+├── docs/                           # 01..06 + backend-implementation/ + postman/
+├── features/                       # godog .feature files (9 files, the 47 scenarios)
+│   ├── quiz_session_management.feature   # + quiz_participation, score_updates,
+│   ├── session_lifecycle.feature         #   leaderboard, connection_reliability,
+│   └── operations_observability.feature  #   input_validation, performance_under_load
+├── deploy/                         # observability config
+│   ├── prometheus/prometheus.yml   # scrape config for the quiz server
+│   ├── promtail/promtail.yml       # ships the quiz container's logs to Loki
 │   └── grafana/
-│       └── dashboards/             # Pre-provisioned latency/throughput dashboard
+│       ├── provisioning/           # datasources (Prometheus + Loki) + dashboard provider
+│       └── dashboards/             # quiz-overview dashboard (metrics + logs panel)
+├── .github/workflows/e2e.yml       # CI: blocking e2e gate + advisory perf job
 ├── Makefile                        # Build, test, run, docker commands
 ├── Dockerfile                      # Multi-stage build → distroless runtime
 ├── docker-compose.yml              # server + prometheus + grafana (local stack)

@@ -1,9 +1,9 @@
 # Implementation Plan — Real-Time Vocabulary Quiz
 # TDD-Driven, Go Implementation
 
-**Version:** 1.1  
-**Date:** 2026-06-14  
-**Status:** Core complete (Steps 1–18, 20 done) — see Progress below  
+**Version:** 1.2  
+**Date:** 2026-06-17  
+**Status:** Complete (Steps 1–22 done, incl. Step 19 godog BDD) — see Progress below  
 **Derived From:** [PRD](./01-product-requirements.md) · [Test Cases](./02-test-cases.md) · [Architecture](./03-architecture.md)
 
 ---
@@ -18,9 +18,9 @@
 | 4 — Services (Steps 10–12) | ✅ done |
 | 5 — Handlers: WS protocol/conn-manager/WS handler/HTTP (Steps 13–16) | ✅ done |
 | 6 — Server wiring, slog, graceful shutdown, `/metrics`, pprof (Step 17) | ✅ done |
-| 7 — Integration tests (Step 18: full flow, reconnect, concurrency over WS) | ✅ done |
+| 7 — Integration tests (Step 18: full flow, reconnect, concurrency over real WS in `internal/handler/`) | ✅ done |
+| 7 — `godog` BDD (Step 19): 9 `features/*.feature` + `tests/e2e/`; `make e2e` (43/43 Tier-1) | ✅ done |
 | 8 — Prometheus instrumentation (Step 20), validation (21), README (22) | ✅ done |
-| 7 — `godog` BDD (Step 19) | ⏳ optional — covered by Go integration/e2e tests |
 
 > Deviations from the original step text: ID generator uses stdlib `crypto/rand`
 > (not `google/uuid`); HTTP wiring lives in `cmd/server/main.go` (no separate
@@ -90,7 +90,7 @@ Each step follows the TDD cycle: **write failing test → write minimal code →
 
 - [ ] **Step 1b: Author the `Makefile` (common project commands)**
   - **Build/run (native — Mode B):** `build`, `run` (local `go run ./cmd/server`), `tidy`
-  - **Test:** `test`, `test-race` (`go test -race ./...`), `test-cover` (writes `coverage.out` + prints %), `bdd` (`go test ./features/...`)
+  - **Test:** `test`, `test-race` (`go test -race ./...`), `test-cover` (coverage %), `e2e` / `e2e-perf` (godog black-box via `scripts/e2e.sh`)
   - **Quality:** `lint` (`golangci-lint run`), `fmt` (`gofmt -w` + `goimports`)
   - **Full Docker stack (Mode A):** `docker-build`, `up` (`docker compose --profile full up --build -d`), `down` (`docker compose --profile full down`), `logs`, `ps`
   - **Infra only (Mode B helper):** `infra-up` (`docker compose up -d` → Prometheus + Grafana only), `infra-down` (`docker compose down`) — pair with `make run` for native dev with live observability
@@ -229,8 +229,8 @@ Each step follows the TDD cycle: **write failing test → write minimal code →
   - 🔴 RED: Write test `TestHTTPHandler_CreateSession_Returns201WithQuizID`
   - 🔴 RED: Write test `TestHTTPHandler_HealthCheck_Returns200`
   - 🔴 RED: Write test `TestHTTPHandler_HealthCheck_IncludesActiveSessionCount`
-  - 🟢 GREEN: Implement `internal/handler/http_handler.go`
-  - **File**: `internal/handler/http_handler.go`, `internal/handler/http_handler_test.go`
+  - 🟢 GREEN: Implement `internal/handler/api.go`
+  - **File**: `internal/handler/api.go`, `internal/handler/api_test.go`
 
 ### Phase 6: Server Wiring & Entry Point
 
@@ -240,28 +240,41 @@ Each step follows the TDD cycle: **write failing test → write minimal code →
   - Register Prometheus metrics endpoint (`/metrics`)
   - Register pprof endpoint (`/debug/pprof/`)
   - Implement graceful shutdown with `context` and `os.Signal`
-  - **File**: `internal/server/server.go`, `cmd/server/main.go`
+  - **File**: `cmd/server/main.go` + `internal/handler/api.go` (wiring lives here; there is no `internal/server` package)
 
 ### Phase 7: Integration & BDD Tests
 
-- [ ] **Step 18: Write integration tests (TDD)**
-  - 🔴 RED: Write test `TestIntegration_FullQuizFlow` — create session → join → answer → verify leaderboard
-  - 🔴 RED: Write test `TestIntegration_ConcurrentUsers` — 100 goroutines joining and answering
-  - 🔴 RED: Write test `TestIntegration_DisconnectReconnect` — simulate connection drop
-  - 🟢 GREEN: Fix any issues discovered during integration
-  - **File**: `internal/server/integration_test.go`
+- [x] **Step 18: Integration tests over real WebSocket** ✅ done
+  - Implemented as real-WebSocket integration tests against an in-process
+    `httptest` server (there is no separate `internal/server` package — wiring
+    lives in `cmd/server/main.go` + `internal/handler/api.go`):
+    - **Full quiz flow** — `internal/handler/ws_integration_test.go`
+      (`TestWS_RealtimeFlow`) and `internal/handler/e2e_test.go` (join → answer →
+      score/leaderboard broadcast → end).
+    - **Concurrent users** — `internal/handler/e2e_test.go` ("20 users submit
+      simultaneously, no scores lost"), plus the domain race test
+      `internal/domain/quiz_session_concurrency_test.go` (run with `-race`). The
+      black-box suite also drives 100 simultaneous submits (Step 19, `@perf`).
+    - **Disconnect / reconnect** — `internal/handler/e2e_test.go` ("reconnect
+      resumes with the preserved score").
+    - **Timed policy over WS** — `internal/handler/ws_timed_test.go`.
+  - **Files**: `internal/handler/{ws_integration_test.go, e2e_test.go, ws_timed_test.go}`,
+    `internal/domain/quiz_session_concurrency_test.go`
 
-- [ ] **Step 19: Write BDD feature tests with godog**
-  - Map Gherkin scenarios from `docs/02-test-cases.md` to `features/*.feature` files
-  - Implement step definitions
-  - Run full BDD suite
-  - **Files**: `features/session.feature`, `features/scoring.feature`, `features/leaderboard.feature`, `features/steps_test.go`
+- [x] **Step 19: BDD feature tests with godog** ✅ done
+  - The 47 Gherkin scenarios from `docs/02-test-cases.md` are runnable as **9**
+    `features/*.feature` files, driven black-box against a *running* server over
+    real WebSocket + HTTP by the `godog` harness in `tests/e2e/`.
+  - Run with `make e2e` (blocking gate, 43 Tier-1 scenarios) / `make e2e-perf`
+    (advisory). Full design in [`docs/05-e2e-test-plan.md`](./05-e2e-test-plan.md).
+  - **Files**: `features/*.feature` (9), `tests/e2e/` (godog runner + step defs),
+    `scripts/e2e.sh`, `.github/workflows/e2e.yml`
 
 ### Phase 8: Polish & Documentation
 
 - [ ] **Step 20: Add Prometheus metrics instrumentation**
   - Instrument: active connections, message latency histogram, score calculations counter, error counter
-  - **File**: `internal/server/metrics.go`
+  - **File**: `internal/handler/metrics.go`
 
 - [ ] **Step 21: Run full validation**
   - `make test` — all unit tests pass
@@ -307,8 +320,8 @@ Each step follows the TDD cycle: **write failing test → write minimal code →
 | Race detector | `go test -race ./...` | No races |
 | Linter | `golangci-lint run` | Zero warnings |
 | Docker build | `docker build -t quiz .` | Success |
-| Integration test | `go test ./internal/server/ -run Integration` | All pass |
-| BDD tests | `go test ./features/` | All scenarios pass |
+| Integration test | `go test ./internal/handler/` (real-WS via `httptest`) | All pass |
+| BDD / e2e tests | `make e2e` (godog, black-box vs a running server) | 43/43 Tier-1 green |
 
 ---
 
